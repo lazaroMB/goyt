@@ -1,0 +1,505 @@
+package tui
+
+import (
+	"fmt"
+	"math"
+	"math/rand"
+	"time"
+
+	"goyt/internal/domain/model"
+	"goyt/internal/domain/port"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+// Update handles user inputs and mpv events.
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	var cmds []tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			m.player.Stop()
+			return m, tea.Quit
+
+		// Global playback shortcuts (when not typing in search box)
+		case "space", " ":
+			if m.activeView != ViewSearch || !m.searchInput.Focused() {
+				m.isPlaying = !m.isPlaying
+				_ = m.player.SetPause(!m.isPlaying)
+				return m, nil
+			}
+		case "n":
+			if m.activeView != ViewSearch || !m.searchInput.Focused() {
+				if nextTrack, ok := m.queue.Next(); ok {
+					m.currentTrack = nextTrack
+					m.trackLoaded = true
+					m.isLoading = true
+					cmds = append(cmds, m.PlayTrackCmd(nextTrack))
+				}
+				return m, tea.Batch(cmds...)
+			}
+		case "p":
+			if m.activeView != ViewSearch || !m.searchInput.Focused() {
+				if prevTrack, ok := m.queue.Prev(); ok {
+					m.currentTrack = prevTrack
+					m.trackLoaded = true
+					m.isLoading = true
+					cmds = append(cmds, m.PlayTrackCmd(prevTrack))
+				}
+				return m, tea.Batch(cmds...)
+			}
+		case "[":
+			if m.activeView != ViewSearch || !m.searchInput.Focused() {
+				m.volume = max(0, m.volume-5)
+				_ = m.player.SetVolume(m.volume)
+				return m, nil
+			}
+		case "]":
+			if m.activeView != ViewSearch || !m.searchInput.Focused() {
+				m.volume = min(100, m.volume+5)
+				_ = m.player.SetVolume(m.volume)
+				return m, nil
+			}
+		case "left":
+			if m.activeView != ViewSearch || !m.searchInput.Focused() {
+				_ = m.player.Seek(-10)
+				return m, nil
+			}
+		case "right":
+			if m.activeView != ViewSearch || !m.searchInput.Focused() {
+				_ = m.player.Seek(10)
+				return m, nil
+			}
+
+		case "a":
+			if !m.focusSide {
+				switch m.activeView {
+				case ViewSearch:
+					if !m.searchInput.Focused() && len(m.searchResults) > 0 {
+						track := m.searchResults[m.searchListIndex]
+						m.queue.Add(track)
+						m.statusMessage = fmt.Sprintf("Added to queue: %s - %s", track.Artist, track.Title)
+
+						if !m.trackLoaded {
+							m.currentTrack = track
+							m.trackLoaded = true
+							m.isLoading = true
+							return m, tea.Batch(
+								m.PlayTrackCmd(track),
+								ClearStatusAfter(3*time.Second),
+							)
+						}
+						return m, ClearStatusAfter(3*time.Second)
+					}
+				case ViewPlaylists:
+					if m.inPlaylistDetail {
+						if len(m.selectedPlaylistTracks) > 0 {
+							track := m.selectedPlaylistTracks[m.playlistTrackIndex]
+							m.queue.Add(track)
+							m.statusMessage = fmt.Sprintf("Added to queue: %s - %s", track.Artist, track.Title)
+
+							if !m.trackLoaded {
+								m.currentTrack = track
+								m.trackLoaded = true
+								m.isLoading = true
+								return m, tea.Batch(
+									m.PlayTrackCmd(track),
+									ClearStatusAfter(3*time.Second),
+								)
+							}
+							return m, ClearStatusAfter(3*time.Second)
+						}
+					} else {
+						if len(m.libraryPlaylists) > 0 {
+							pl := m.libraryPlaylists[m.playlistListIndex]
+							m.isLoadingPlaylists = true
+							m.playlistsError = nil
+							m.statusMessage = fmt.Sprintf("Loading all tracks from playlist %q...", pl.Title)
+							return m, tea.Batch(
+								m.EnqueuePlaylistCmd(pl.ID, pl.Title),
+								ClearStatusAfter(3*time.Second),
+							)
+						}
+					}
+				}
+			}
+
+		case "tab":
+			m.focusSide = !m.focusSide
+			if !m.focusSide && m.activeView == ViewSearch {
+				m.searchInput.Focus()
+			} else {
+				m.searchInput.Blur()
+			}
+			return m, nil
+
+		case "up", "k":
+			if m.focusSide {
+				m.sidebarIndex = max(0, m.sidebarIndex-1)
+				m.activeView = ActiveView(m.sidebarIndex)
+				if m.activeView == ViewPlaylists && len(m.libraryPlaylists) == 0 {
+					m.isLoadingPlaylists = true
+					m.playlistsError = nil
+					cmds = append(cmds, m.loadPlaylistsCmd())
+				}
+			} else {
+				switch m.activeView {
+				case ViewSearch:
+					if !m.searchInput.Focused() {
+						m.searchListIndex = max(0, m.searchListIndex-1)
+					}
+				case ViewPlaylists:
+					if m.inPlaylistDetail {
+						m.playlistTrackIndex = max(0, m.playlistTrackIndex-1)
+					} else {
+						m.playlistListIndex = max(0, m.playlistListIndex-1)
+					}
+				case ViewQueue:
+					m.queueListIndex = max(0, m.queueListIndex-1)
+				}
+			}
+			return m, tea.Batch(cmds...)
+
+		case "down", "j":
+			if m.focusSide {
+				m.sidebarIndex = min(3, m.sidebarIndex+1)
+				m.activeView = ActiveView(m.sidebarIndex)
+				if m.activeView == ViewPlaylists && len(m.libraryPlaylists) == 0 {
+					m.isLoadingPlaylists = true
+					m.playlistsError = nil
+					cmds = append(cmds, m.loadPlaylistsCmd())
+				}
+			} else {
+				switch m.activeView {
+				case ViewSearch:
+					if !m.searchInput.Focused() {
+						m.searchListIndex = min(len(m.searchResults)-1, m.searchListIndex+1)
+						if m.searchListIndex >= len(m.searchResults)-5 && m.searchContinuation != "" && !m.isLoadingNextPage {
+							m.isLoadingNextPage = true
+							cmds = append(cmds, m.SearchNextPageCmd(m.searchContinuation))
+						}
+					}
+				case ViewPlaylists:
+					if m.inPlaylistDetail {
+						m.playlistTrackIndex = min(len(m.selectedPlaylistTracks)-1, m.playlistTrackIndex+1)
+					} else {
+						m.playlistListIndex = min(len(m.libraryPlaylists)-1, m.playlistListIndex+1)
+					}
+				case ViewQueue:
+					m.queueListIndex = min(len(m.queue.List())-1, m.queueListIndex+1)
+				}
+			}
+			return m, tea.Batch(cmds...)
+
+		case "enter":
+			if m.focusSide {
+				m.focusSide = false
+				if m.activeView == ViewSearch {
+					m.searchInput.Focus()
+				}
+			} else {
+				switch m.activeView {
+				case ViewSearch:
+					if m.searchInput.Focused() {
+						// Trigger search
+						query := m.searchInput.Value()
+						if query != "" {
+							m.isSearching = true
+							m.searchError = nil
+							m.searchResults = nil
+							m.searchInput.Blur()
+							cmds = append(cmds, m.SearchCmd(query))
+						}
+					} else {
+						// Select track from search results
+						if len(m.searchResults) > 0 {
+							track := m.searchResults[m.searchListIndex]
+							m.queue.Add(track)
+							m.queue.SetIndex(len(m.queue.List()) - 1)
+							m.currentTrack = track
+							m.trackLoaded = true
+							m.isLoading = true
+							cmds = append(cmds, m.PlayTrackCmd(track))
+						}
+					}
+				case ViewPlaylists:
+					if !m.inPlaylistDetail {
+						if len(m.libraryPlaylists) > 0 {
+							pl := m.libraryPlaylists[m.playlistListIndex]
+							m.isLoadingPlaylists = true
+							m.playlistsError = nil
+							cmds = append(cmds, m.loadPlaylistTracksCmd(pl.ID, pl.Title))
+						}
+					} else {
+						if len(m.selectedPlaylistTracks) > 0 {
+							track := m.selectedPlaylistTracks[m.playlistTrackIndex]
+							m.queue.Add(track)
+							m.queue.SetIndex(len(m.queue.List()) - 1)
+							m.currentTrack = track
+							m.trackLoaded = true
+							m.isLoading = true
+							cmds = append(cmds, m.PlayTrackCmd(track))
+						}
+					}
+				case ViewQueue:
+					if len(m.queue.List()) > 0 {
+						if m.queue.SetIndex(m.queueListIndex) {
+							if track, ok := m.queue.Current(); ok {
+								m.currentTrack = track
+								m.trackLoaded = true
+								m.isLoading = true
+								cmds = append(cmds, m.PlayTrackCmd(track))
+							}
+						}
+					}
+				}
+			}
+			return m, tea.Batch(cmds...)
+
+		case "/":
+			if m.activeView == ViewSearch && !m.focusSide && !m.searchInput.Focused() {
+				m.searchInput.Focus()
+				m.searchInput.SetValue(m.searchInput.Value())
+				return m, nil
+			}
+
+		case "backspace":
+			if m.activeView == ViewSearch && m.searchInput.Focused() {
+				break
+			}
+			if m.activeView == ViewPlaylists && m.inPlaylistDetail {
+				m.inPlaylistDetail = false
+				return m, nil
+			}
+			return m, nil
+
+		case "esc":
+			if m.activeView == ViewPlaylists && m.inPlaylistDetail {
+				m.inPlaylistDetail = false
+				return m, nil
+			}
+			if m.activeView == ViewSearch {
+				if m.searchInput.Focused() {
+					m.searchInput.Blur()
+				} else {
+					m.searchInput.SetValue("")
+					m.searchInput.Focus()
+				}
+				return m, nil
+			}
+			return m, nil
+		}
+
+	case ClearStatusMsg:
+		m.statusMessage = ""
+		return m, nil
+
+	case playlistsLoaded:
+		m.isLoadingPlaylists = false
+		m.libraryPlaylists = msg.playlists
+		m.playlistListIndex = 0
+		return m, nil
+
+	case playlistsLoadError:
+		m.isLoadingPlaylists = false
+		m.playlistsError = msg.err
+		return m, nil
+
+	case playlistTracksLoaded:
+		m.isLoadingPlaylists = false
+		m.selectedPlaylistTracks = msg.tracks
+		m.selectedPlaylistName = msg.name
+		m.playlistTrackIndex = 0
+		m.inPlaylistDetail = true
+		return m, nil
+
+	case playlistTracksLoadError:
+		m.isLoadingPlaylists = false
+		m.playlistsError = msg.err
+		return m, nil
+
+	case playlistTracksEnqueueLoaded:
+		m.isLoadingPlaylists = false
+		if len(msg.tracks) > 0 {
+			m.queue.Add(msg.tracks...)
+			m.statusMessage = fmt.Sprintf("Added %d songs from %q to queue", len(msg.tracks), msg.name)
+
+			if !m.trackLoaded {
+				firstTrack := msg.tracks[0]
+				m.queue.SetIndex(len(m.queue.List()) - len(msg.tracks))
+				m.currentTrack = firstTrack
+				m.trackLoaded = true
+				m.isLoading = true
+				return m, tea.Batch(
+					m.PlayTrackCmd(firstTrack),
+					ClearStatusAfter(3*time.Second),
+				)
+			}
+		} else {
+			m.statusMessage = fmt.Sprintf("Playlist %q is empty", msg.name)
+		}
+		return m, ClearStatusAfter(3*time.Second)
+
+	case playlistTracksEnqueueError:
+		m.isLoadingPlaylists = false
+		m.playlistsError = msg.err
+		m.statusMessage = fmt.Sprintf("Failed to enqueue playlist: %v", msg.err)
+		return m, ClearStatusAfter(3*time.Second)
+
+	case equalizerTickMsg:
+		if m.isPlaying {
+			for i := range m.equalizerBars {
+				factor := math.Sin(float64(i) / float64(len(m.equalizerBars)-1) * math.Pi)
+				noise := 0.15 + rand.Float64()*0.85
+				colMaxHeight := 1.0 + m.currentIntensity*4.0*factor*noise
+
+				target := colMaxHeight
+				current := float64(m.equalizerBars[i])
+
+				var newVal float64
+				if target > current {
+					newVal = math.Round(target)
+				} else {
+					newVal = current - 0.5
+				}
+
+				if newVal < 1 {
+					newVal = 1
+				} else if newVal > 5 {
+					newVal = 5
+				}
+				m.equalizerBars[i] = int(newVal)
+			}
+		} else {
+			for i := range m.equalizerBars {
+				if m.equalizerBars[i] > 1 {
+					m.equalizerBars[i]--
+				}
+			}
+		}
+		return m, m.tickEqualizer()
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case searchResultsMsg:
+		m.isSearching = false
+		if msg.err != nil {
+			m.searchError = msg.err
+			return m, nil
+		}
+		m.searchResults = msg.tracks
+		m.searchContinuation = msg.continuation
+		m.searchListIndex = 0
+		m.searchError = nil
+
+		if m.searchContinuation != "" && !m.isLoadingNextPage {
+			m.isLoadingNextPage = true
+			cmds = append(cmds, m.SearchNextPageCmd(m.searchContinuation))
+		}
+		return m, tea.Batch(cmds...)
+
+	case searchNextPageMsg:
+		m.isLoadingNextPage = false
+		if msg.err != nil {
+			m.statusMessage = fmt.Sprintf("Error loading more results: %v", msg.err)
+			return m, ClearStatusAfter(3*time.Second)
+		}
+		m.searchResults = append(m.searchResults, msg.tracks...)
+		m.searchContinuation = msg.continuation
+		return m, nil
+
+	case model.Track:
+		m.currentTrack = msg
+		m.isPlaying = true
+		return m, nil
+
+	case MpvEventMsg:
+		m.handleMpvEvent(port.PlayerEvent(msg))
+		return m, m.waitForMpvEvents()
+	}
+
+	if m.activeView == ViewSearch && m.searchInput.Focused() {
+		m.searchInput, cmd = m.searchInput.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
+	return m, tea.Batch(cmds...)
+}
+
+func (m *Model) handleMpvEvent(ev port.PlayerEvent) {
+	switch ev.Type {
+	case "start-file":
+		m.isLoading = true
+	case "file-loaded":
+		m.isLoading = false
+	case "property-change":
+		switch ev.Name {
+		case "time-pos":
+			if val, ok := ev.Data.(float64); ok {
+				m.timePos = val
+			}
+		case "duration":
+			if val, ok := ev.Data.(float64); ok {
+				m.duration = val
+			}
+		case "pause":
+			if val, ok := ev.Data.(bool); ok {
+				m.isPlaying = !val
+			}
+		case "volume":
+			if val, ok := ev.Data.(float64); ok {
+				m.volume = int(val)
+			}
+		case "af-metadata/myfilter":
+			if metadataMap, ok := ev.Data.(map[string]interface{}); ok {
+				if rmsStr, ok := metadataMap["lavfi.astats.Overall.RMS_level"].(string); ok {
+					var rms float64
+					if _, err := fmt.Sscanf(rmsStr, "%f", &rms); err == nil {
+						if rms < -35 {
+							rms = -35
+						} else if rms > -10 {
+							rms = -10
+						}
+						m.currentIntensity = (rms + 35.0) / 25.0
+					}
+				}
+			}
+		}
+	case "end-file":
+		m.isLoading = false
+		if ev.Reason == "eof" {
+			if nextTrack, ok := m.queue.Next(); ok {
+				m.currentTrack = nextTrack
+				m.trackLoaded = true
+				m.isLoading = true
+				url := fmt.Sprintf("ytdl://%s", nextTrack.VideoID)
+				_ = m.player.LoadFile(url)
+			} else {
+				m.isPlaying = false
+				m.trackLoaded = false
+				m.timePos = 0
+				m.duration = 0
+			}
+		}
+	}
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

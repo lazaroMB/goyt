@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"goyt/pkg/config"
-	"goyt/pkg/player"
-	"goyt/pkg/queue"
-	"goyt/pkg/tui"
-	"goyt/pkg/ytmusic"
+	"goyt/internal/adapter/catalog/ytmusic"
+	configJson "goyt/internal/adapter/config/json"
+	"goyt/internal/adapter/player/mpv"
+	"goyt/internal/adapter/tui"
+	"goyt/internal/domain/model"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -55,8 +55,6 @@ func (art *authenticatedRoundTripper) RoundTrip(req *http.Request) (*http.Respon
 		req.Header.Set("Origin", "https://music.youtube.com")
 	}
 
-
-
 	return art.next.RoundTrip(req)
 }
 
@@ -82,14 +80,24 @@ func getSAPISIDHash(sapisid string, origin string) string {
 
 func main() {
 	// 0. Load Configuration
-	cfg, err := config.Load()
+	configAdapter, err := configJson.NewJsonConfigAdapter()
 	if err != nil {
-		fmt.Printf("Warning: failed to load config: %v\n", err)
-		cfg = &config.Config{}
+		fmt.Printf("Error initializing config adapter: %v\n", err)
+		os.Exit(1)
+	}
+
+	cookie, err := configAdapter.LoadCookie()
+	if err != nil {
+		fmt.Printf("Warning: failed to load cookie: %v\n", err)
+	}
+
+	theme, err := configAdapter.LoadTheme()
+	if err != nil {
+		fmt.Printf("Warning: failed to load theme: %v\n", err)
 	}
 
 	// 1. Initialize Player
-	p := player.NewPlayer()
+	p := mpv.NewMpvPlayerAdapter()
 	if err := p.Start(); err != nil {
 		fmt.Printf("Error starting mpv: %v\n", err)
 		fmt.Println("Please make sure 'mpv' and 'yt-dlp' are installed on your system.")
@@ -99,28 +107,28 @@ func main() {
 
 	// 2. Setup Authenticated HTTP Client
 	var httpClient *http.Client
-	if cfg.Cookie != "" {
+	if cookie != "" {
 		httpClient = &http.Client{
 			Transport: &authenticatedRoundTripper{
-				cookie: cfg.Cookie,
+				cookie: cookie,
 				next:   http.DefaultTransport,
 			},
 		}
 	}
 
 	// 3. Initialize YouTube Music Client
-	client, err := ytmusic.NewClient(httpClient)
+	client, err := ytmusic.NewYtMusicCatalogAdapter(httpClient)
 	if err != nil {
-		fmt.Printf("Error starting YouTube Music client: %v\n", err)
+		fmt.Printf("Error starting YouTube Music catalog client: %v\n", err)
 		os.Exit(1)
 	}
 
 	// 4. Initialize Queue
-	q := queue.NewQueue()
+	q := model.NewQueue()
 
 	// 5. Initialize Bubble Tea UI
-	model := tui.NewModel(client, p, q)
-	program := tea.NewProgram(model, tea.WithAltScreen())
+	modelTui := tui.NewModel(client, p, q, theme)
+	program := tea.NewProgram(modelTui, tea.WithAltScreen())
 
 	if _, err := program.Run(); err != nil {
 		fmt.Printf("Error running TUI: %v\n", err)
