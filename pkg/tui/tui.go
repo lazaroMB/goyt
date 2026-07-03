@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -57,6 +58,8 @@ type Model struct {
 
 	// Search Results
 	searchResults []ytmusic.Track
+	searchContinuation string
+	isLoadingNextPage  bool
 
 	// Playlist View State
 	libraryPlaylists       []ytmusic.Playlist
@@ -78,6 +81,9 @@ type Model struct {
 	isLoading    bool
 	statusMessage string
 
+	// Equalizer State
+	equalizerBars []int
+
 	// Window Dimensions
 	width  int
 	height int
@@ -92,14 +98,15 @@ func NewModel(client *ytmusic.Client, p *player.Player, q *queue.Queue) *Model {
 	ti.Width = 40
 
 	return &Model{
-		client:       client,
-		player:       p,
-		queue:        q,
-		activeView:   ViewHome,
-		focusSide:    true,
-		sidebarIndex: 0,
-		searchInput:  ti,
-		volume:       70,
+		client:        client,
+		player:        p,
+		queue:         q,
+		activeView:    ViewHome,
+		focusSide:     true,
+		sidebarIndex:  0,
+		searchInput:   ti,
+		volume:        70,
+		equalizerBars: make([]int, 8),
 	}
 }
 
@@ -149,11 +156,20 @@ func (m *Model) EnqueuePlaylistCmd(playlistID string, name string) tea.Cmd {
 	}
 }
 
+type equalizerTickMsg time.Time
+
+func (m *Model) tickEqualizer() tea.Cmd {
+	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
+		return equalizerTickMsg(t)
+	})
+}
+
 // Init sets up the initial commands.
 func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		textinput.Blink,
 		m.waitForMpvEvents(),
+		m.tickEqualizer(),
 	)
 }
 
@@ -164,14 +180,38 @@ func (m *Model) waitForMpvEvents() tea.Cmd {
 	}
 }
 
+type searchResultsMsg struct {
+	tracks       []ytmusic.Track
+	continuation string
+	query        string
+	err          error
+}
+
+type searchNextPageMsg struct {
+	tracks       []ytmusic.Track
+	continuation string
+	err          error
+}
+
 // SearchCmd performs a search asynchronously.
 func (m *Model) SearchCmd(query string) tea.Cmd {
 	return func() tea.Msg {
-		tracks, err := m.client.Search(query)
+		tracks, continuation, err := m.client.Search(query)
 		if err != nil {
-			return err
+			return searchResultsMsg{err: err}
 		}
-		return tracks
+		return searchResultsMsg{tracks: tracks, continuation: continuation, query: query}
+	}
+}
+
+// SearchNextPageCmd loads the next page of search results.
+func (m *Model) SearchNextPageCmd(token string) tea.Cmd {
+	return func() tea.Msg {
+		tracks, continuation, err := m.client.SearchNextPage(token)
+		if err != nil {
+			return searchNextPageMsg{err: err}
+		}
+		return searchNextPageMsg{tracks: tracks, continuation: continuation}
 	}
 }
 
@@ -354,6 +394,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case ViewSearch:
 					if !m.searchInput.Focused() {
 						m.searchListIndex = min(len(m.searchResults)-1, m.searchListIndex+1)
+						if m.searchListIndex >= len(m.searchResults)-5 && m.searchContinuation != "" && !m.isLoadingNextPage {
+							m.isLoadingNextPage = true
+							cmds = append(cmds, m.SearchNextPageCmd(m.searchContinuation))
+						}
 					}
 				case ViewPlaylists:
 					if m.inPlaylistDetail {
@@ -433,13 +477,36 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Batch(cmds...)
 
-		case "esc", "backspace":
+		case "/":
+			if m.activeView == ViewSearch && !m.focusSide && !m.searchInput.Focused() {
+				m.searchInput.Focus()
+				m.searchInput.SetValue(m.searchInput.Value())
+				return m, nil
+			}
+
+		case "backspace":
+			if m.activeView == ViewSearch && m.searchInput.Focused() {
+				break
+			}
 			if m.activeView == ViewPlaylists && m.inPlaylistDetail {
 				m.inPlaylistDetail = false
 				return m, nil
 			}
-			if m.activeView == ViewSearch && m.searchInput.Focused() {
-				m.searchInput.Blur()
+			return m, nil
+
+		case "esc":
+			if m.activeView == ViewPlaylists && m.inPlaylistDetail {
+				m.inPlaylistDetail = false
+				return m, nil
+			}
+			if m.activeView == ViewSearch {
+				if m.searchInput.Focused() {
+					m.searchInput.Blur()
+				} else {
+					m.searchInput.SetValue("")
+					m.searchInput.Focus()
+				}
+				return m, nil
 			}
 			return m, nil
 		}
@@ -493,27 +560,68 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMessage = fmt.Sprintf("Playlist %q is empty", msg.name)
 		}
 		return m, clearStatusAfter(3*time.Second)
-
 	case playlistTracksEnqueueError:
 		m.isLoadingPlaylists = false
 		m.playlistsError = msg.err
 		m.statusMessage = fmt.Sprintf("Failed to enqueue playlist: %v", msg.err)
 		return m, clearStatusAfter(3*time.Second)
 
+	case equalizerTickMsg:
+		if m.isPlaying {
+			for i := range m.equalizerBars {
+				// Random step of -2, -1, 0, +1, +2
+				delta := rand.Intn(5) - 2
+				newVal := m.equalizerBars[i] + delta
+				if newVal < 1 {
+					newVal = 1
+				} else if newVal > 5 {
+					newVal = 5
+				}
+				if newVal == 1 && rand.Float32() < 0.2 {
+					newVal = rand.Intn(3) + 2
+				}
+				m.equalizerBars[i] = newVal
+			}
+		} else {
+			for i := range m.equalizerBars {
+				if m.equalizerBars[i] > 1 {
+					m.equalizerBars[i]--
+				}
+			}
+		}
+		return m, m.tickEqualizer()
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
 
-	case []ytmusic.Track:
+	case searchResultsMsg:
 		m.isSearching = false
-		m.searchResults = msg
+		if msg.err != nil {
+			m.searchError = msg.err
+			return m, nil
+		}
+		m.searchResults = msg.tracks
+		m.searchContinuation = msg.continuation
 		m.searchListIndex = 0
-		return m, nil
+		m.searchError = nil
 
-	case error:
-		m.isSearching = false
-		m.searchError = msg
+		var cmds []tea.Cmd
+		if m.searchContinuation != "" && !m.isLoadingNextPage {
+			m.isLoadingNextPage = true
+			cmds = append(cmds, m.SearchNextPageCmd(m.searchContinuation))
+		}
+		return m, tea.Batch(cmds...)
+
+	case searchNextPageMsg:
+		m.isLoadingNextPage = false
+		if msg.err != nil {
+			m.statusMessage = fmt.Sprintf("Error loading more results: %v", msg.err)
+			return m, clearStatusAfter(3*time.Second)
+		}
+		m.searchResults = append(m.searchResults, msg.tracks...)
+		m.searchContinuation = msg.continuation
 		return m, nil
 
 	case ytmusic.Track:
@@ -591,18 +699,18 @@ func (m *Model) View() string {
 	// Layout elements
 	sidebarWidth := 20
 	mainWidth := m.width - sidebarWidth - 4 // border padding
-	mainHeight := m.height - 7             // minus header and footer player
+	mainHeight := m.height - 10            // minus header and footer player
 
 	// Define styles
 	sidebarStyle := lipgloss.NewStyle().
 		Width(sidebarWidth).
-		Height(mainHeight).
+		Height(mainHeight - 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#FF0000"))
 
 	mainStyle := lipgloss.NewStyle().
 		Width(mainWidth).
-		Height(mainHeight).
+		Height(mainHeight - 2).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("#3C3C3C"))
 
@@ -664,7 +772,9 @@ func (m *Model) renderHome() string {
 	sb.WriteString("  Keyboard Shortcuts:\n")
 	sb.WriteString("  - Tab       : Switch focus between Sidebar and Workspace\n")
 	sb.WriteString("  - Up/Down   : Navigate lists or sidebar items\n")
-	sb.WriteString("  - Enter     : Select/Play items or focus search bar\n")
+	sb.WriteString("  - Enter     : Select/Play items\n")
+	sb.WriteString("  - /         : Focus search bar (in Search view)\n")
+	sb.WriteString("  - Esc       : Clear & refocus search bar (or go back)\n")
 	sb.WriteString("  - Space     : Toggle Play / Pause\n")
 	sb.WriteString("  - n / p     : Skip to Next / Previous track\n")
 	sb.WriteString("  - [ / ]     : Decrease / Increase volume\n")
@@ -698,9 +808,33 @@ func (m *Model) renderSearch() string {
 		return sb.String()
 	}
 
-	// Render search results
-	sb.WriteString("  Results:\n")
-	for i, track := range m.searchResults {
+	// Calculate maximum visible rows based on panel height and overhead
+	overhead := 5
+	if m.statusMessage != "" {
+		overhead = 7
+	}
+	mainHeight := m.height - 10
+	maxVisible := mainHeight - 2 - overhead
+	if maxVisible < 5 {
+		maxVisible = 5
+	}
+
+	start, end := getVisibleRange(len(m.searchResults), maxVisible, m.searchListIndex)
+
+	scrollIndicator := ""
+	if start > 0 && end < len(m.searchResults) {
+		scrollIndicator = " ▲ ▼"
+	} else if start > 0 {
+		scrollIndicator = " ▲"
+	} else if end < len(m.searchResults) {
+		scrollIndicator = " ▼"
+	}
+
+	// Render search results header
+	sb.WriteString(fmt.Sprintf("  Results (showing %d-%d of %d)%s:\n", start+1, end, len(m.searchResults), scrollIndicator))
+
+	for i := start; i < end; i++ {
+		track := m.searchResults[i]
 		prefix := "  "
 		if i == m.searchListIndex && !m.focusSide && !m.searchInput.Focused() {
 			prefix = "> "
@@ -718,16 +852,36 @@ func (m *Model) renderSearch() string {
 
 func (m *Model) renderQueue() string {
 	var sb strings.Builder
-	sb.WriteString("  Play Queue:\n\n")
 
 	tracks := m.queue.List()
 	if len(tracks) == 0 {
+		sb.WriteString("  Play Queue:\n\n")
 		sb.WriteString("  Queue is empty. Go search and add songs!\n")
 		return sb.String()
 	}
 
+	mainHeight := m.height - 10
+	maxVisible := mainHeight - 2 - 3
+	if maxVisible < 5 {
+		maxVisible = 5
+	}
+
 	currIdx := m.queue.CurrentIndex()
-	for i, track := range tracks {
+	start, end := getVisibleRange(len(tracks), maxVisible, m.queueListIndex)
+
+	scrollIndicator := ""
+	if start > 0 && end < len(tracks) {
+		scrollIndicator = " ▲ ▼"
+	} else if start > 0 {
+		scrollIndicator = " ▲"
+	} else if end < len(tracks) {
+		scrollIndicator = " ▼"
+	}
+
+	sb.WriteString(fmt.Sprintf("  Play Queue (showing %d-%d of %d)%s:\n\n", start+1, end, len(tracks), scrollIndicator))
+
+	for i := start; i < end; i++ {
+		track := tracks[i]
 		prefix := "  "
 		if i == currIdx {
 			prefix = "▶ "
@@ -752,7 +906,7 @@ func (m *Model) renderQueue() string {
 func (m *Model) renderFooter(width int) string {
 	var sb strings.Builder
 
-	// Track Info Row
+	// Track Info Row (Line 1)
 	trackTitle := "Idle"
 	trackArtist := "No track loaded"
 	if m.trackLoaded {
@@ -771,21 +925,10 @@ func (m *Model) renderFooter(width int) string {
 	if m.isLoading {
 		info = fmt.Sprintf(" %s  Loading: %s - %s...", statusIcon, trackArtist, trackTitle)
 	}
-	vol := fmt.Sprintf("Vol: %d%%", m.volume)
+	sb.WriteString(info + "\n")
 
-	// Pads the center to align Vol to the right
-	padSize := width - len(info) - len(vol) - 4
-	if padSize > 0 {
-		sb.WriteString(info + strings.Repeat(" ", padSize) + vol + "\n")
-	} else {
-		sb.WriteString(info + "   " + vol + "\n")
-	}
-
-	// Progress Bar Row
-	currTimeStr := formatTime(m.timePos)
-	totalTimeStr := formatTime(m.duration)
-
-	barWidth := width - len(currTimeStr) - len(totalTimeStr) - 6
+	// Waveform Progress Bar (Lines 2-6)
+	barWidth := width - 2
 	var progress string
 	if m.isLoading {
 		msg := " Resolving stream & buffering... "
@@ -799,17 +942,84 @@ func (m *Model) renderFooter(width int) string {
 		} else {
 			progress = msg
 		}
-	} else if m.duration > 0 && barWidth > 0 {
-		pct := m.timePos / m.duration
-		filledWidth := int(pct * float64(barWidth))
-		filled := strings.Repeat("█", filledWidth)
-		empty := strings.Repeat("░", barWidth-filledWidth)
-		progress = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000")).Render(filled) + empty
-	} else {
-		progress = strings.Repeat("░", max(0, barWidth))
-	}
+	} else if barWidth > 0 {
+		// Ensure equalizerBars size matches barWidth exactly
+		if len(m.equalizerBars) != barWidth {
+			newBars := make([]int, barWidth)
+			copy(newBars, m.equalizerBars)
+			// Initialize new bars to baseline (1)
+			for i := len(m.equalizerBars); i < barWidth; i++ {
+				newBars[i] = 1
+			}
+			m.equalizerBars = newBars
+		}
 
-	sb.WriteString(fmt.Sprintf(" %s [%s] %s \n", currTimeStr, progress, totalTimeStr))
+		pct := 0.0
+		if m.duration > 0 {
+			pct = m.timePos / m.duration
+		}
+		highlightedCount := int(pct * float64(barWidth))
+
+		// Render 5 rows of text from top y = 4 to bottom y = 0
+		var rows [5]strings.Builder
+		for y := 4; y >= 0; y-- {
+			for x := 0; x < barWidth; x++ {
+				h := m.equalizerBars[x]
+				
+				// Filled circle if y < h, space otherwise
+				char := ' '
+				isFilled := y < h
+				if isFilled {
+					char = '●'
+				}
+
+				// Styling
+				var style lipgloss.Style
+				if isFilled && x < highlightedCount {
+					// Active played LED: full diagonal rainbow gradient color
+					factor := float64(x)/float64(barWidth-1)*0.6 + float64(y)/4.0*0.4
+					colorHex := interpolateColor(factor)
+					style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
+				} else if isFilled {
+					// Active unplayed LED: dim gradient color
+					factor := float64(x)/float64(barWidth-1)*0.6 + float64(y)/4.0*0.4
+					colorHex := interpolateColorDim(factor)
+					style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
+				} else {
+					// Inactive LED: very dim empty circle
+					style = lipgloss.NewStyle().Foreground(lipgloss.Color("#1C1C1C"))
+				}
+				rows[y].WriteString(style.Render(string(char)))
+			}
+		}
+
+		progress = strings.Join([]string{
+			rows[4].String(),
+			rows[3].String(),
+			rows[2].String(),
+			rows[1].String(),
+			rows[0].String(),
+		}, "\n")
+	} else {
+		progress = ""
+	}
+	sb.WriteString(progress + "\n")
+
+	// Time Pos & Volume Row (Line 7)
+	currTimeStr := formatTime(m.timePos)
+	totalTimeStr := formatTime(m.duration)
+	timeInfo := fmt.Sprintf(" %s / %s", currTimeStr, totalTimeStr)
+	if m.isLoading {
+		timeInfo = " --:-- / --:--"
+	}
+	vol := fmt.Sprintf("Vol: %d%% ", m.volume)
+
+	padSize := width - len(timeInfo) - len(vol)
+	if padSize > 0 {
+		sb.WriteString(timeInfo + strings.Repeat(" ", padSize) + vol)
+	} else {
+		sb.WriteString(timeInfo + "   " + vol)
+	}
 
 	footerStyle := lipgloss.NewStyle().
 		Width(width).
@@ -817,6 +1027,56 @@ func (m *Model) renderFooter(width int) string {
 		BorderForeground(lipgloss.Color("#3C3C3C"))
 
 	return footerStyle.Render(sb.String())
+}
+
+type rgb struct {
+	r, g, b int
+}
+
+func interpolateColor(factor float64) string {
+	keyframes := []rgb{
+		{0, 242, 254},  // Cyan
+		{79, 172, 254}, // Blue
+		{0, 255, 135},  // Lime Green
+		{254, 200, 96}, // Gold/Orange
+		{255, 8, 68},   // Red
+	}
+	return interpolateKeyframes(factor, keyframes)
+}
+
+func interpolateColorDim(factor float64) string {
+	keyframes := []rgb{
+		{0, 60, 64},   // Dark Cyan
+		{20, 43, 64},  // Dark Blue
+		{0, 64, 34},   // Dark Green
+		{64, 50, 24},  // Dark Gold/Orange
+		{64, 2, 17},   // Dark Red
+	}
+	return interpolateKeyframes(factor, keyframes)
+}
+
+func interpolateKeyframes(factor float64, keyframes []rgb) string {
+	if factor <= 0 {
+		return fmt.Sprintf("#%02X%02X%02X", keyframes[0].r, keyframes[0].g, keyframes[0].b)
+	}
+	if factor >= 1 {
+		last := keyframes[len(keyframes)-1]
+		return fmt.Sprintf("#%02X%02X%02X", last.r, last.g, last.b)
+	}
+
+	idx := factor * float64(len(keyframes)-1)
+	low := int(idx)
+	high := low + 1
+	t := idx - float64(low)
+
+	c1 := keyframes[low]
+	c2 := keyframes[high]
+
+	r := int(float64(c1.r)*(1-t) + float64(c2.r)*t)
+	g := int(float64(c1.g)*(1-t) + float64(c2.g)*t)
+	b := int(float64(c1.b)*(1-t) + float64(c2.b)*t)
+
+	return fmt.Sprintf("#%02X%02X%02X", r, g, b)
 }
 
 func formatTime(seconds float64) string {
@@ -840,6 +1100,21 @@ func min(a, b int) int {
 	return b
 }
 
+func getVisibleRange(totalItems, maxVisible, selectedIndex int) (start, end int) {
+	if totalItems <= maxVisible {
+		return 0, totalItems
+	}
+
+	start = selectedIndex - maxVisible/2
+	if start < 0 {
+		start = 0
+	}
+	if start+maxVisible > totalItems {
+		start = totalItems - maxVisible
+	}
+	return start, start + maxVisible
+}
+
 func (m *Model) renderPlaylists() string {
 	var sb strings.Builder
 	if m.isLoadingPlaylists {
@@ -856,17 +1131,46 @@ func (m *Model) renderPlaylists() string {
 		return sb.String()
 	}
 
+	mainHeight := m.height - 10
+
 	if !m.inPlaylistDetail {
-		sb.WriteString("  Your Playlists:\n\n")
+		overhead := 4
 		if m.statusMessage != "" {
-			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Render("  "+m.statusMessage) + "\n\n")
+			overhead = 6
 		}
+		maxVisible := mainHeight - 2 - overhead
+		if maxVisible < 5 {
+			maxVisible = 5
+		}
+
 		if len(m.libraryPlaylists) == 0 {
+			sb.WriteString("  Your Playlists:\n\n")
+			if m.statusMessage != "" {
+				sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Render("  "+m.statusMessage) + "\n\n")
+			}
 			sb.WriteString("  No playlists found in your library.\n")
 			return sb.String()
 		}
 
-		for i, pl := range m.libraryPlaylists {
+		start, end := getVisibleRange(len(m.libraryPlaylists), maxVisible, m.playlistListIndex)
+
+		scrollIndicator := ""
+		if start > 0 && end < len(m.libraryPlaylists) {
+			scrollIndicator = " ▲ ▼"
+		} else if start > 0 {
+			scrollIndicator = " ▲"
+		} else if end < len(m.libraryPlaylists) {
+			scrollIndicator = " ▼"
+		}
+
+		sb.WriteString(fmt.Sprintf("  Your Playlists (showing %d-%d of %d)%s:\n\n", start+1, end, len(m.libraryPlaylists), scrollIndicator))
+
+		if m.statusMessage != "" {
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Render("  "+m.statusMessage) + "\n\n")
+		}
+
+		for i := start; i < end; i++ {
+			pl := m.libraryPlaylists[i]
 			prefix := "  "
 			if i == m.playlistListIndex && !m.focusSide {
 				prefix = "> "
@@ -880,17 +1184,44 @@ func (m *Model) renderPlaylists() string {
 		}
 		sb.WriteString("\n  [ Press Enter to open | Press 'a' to add all songs to queue ]\n")
 	} else {
-		sb.WriteString(fmt.Sprintf("  Playlist: %s\n\n", m.selectedPlaylistName))
+		overhead := 4
 		if m.statusMessage != "" {
-			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Render("  "+m.statusMessage) + "\n\n")
+			overhead = 6
 		}
+		maxVisible := mainHeight - 2 - overhead
+		if maxVisible < 5 {
+			maxVisible = 5
+		}
+
 		if len(m.selectedPlaylistTracks) == 0 {
+			sb.WriteString(fmt.Sprintf("  Playlist: %s\n\n", m.selectedPlaylistName))
+			if m.statusMessage != "" {
+				sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Render("  "+m.statusMessage) + "\n\n")
+			}
 			sb.WriteString("  No tracks in this playlist.\n")
 			sb.WriteString("  [ Press Esc to go back ]\n")
 			return sb.String()
 		}
 
-		for i, track := range m.selectedPlaylistTracks {
+		start, end := getVisibleRange(len(m.selectedPlaylistTracks), maxVisible, m.playlistTrackIndex)
+
+		scrollIndicator := ""
+		if start > 0 && end < len(m.selectedPlaylistTracks) {
+			scrollIndicator = " ▲ ▼"
+		} else if start > 0 {
+			scrollIndicator = " ▲"
+		} else if end < len(m.selectedPlaylistTracks) {
+			scrollIndicator = " ▼"
+		}
+
+		sb.WriteString(fmt.Sprintf("  Playlist: %s (showing %d-%d of %d)%s\n\n", m.selectedPlaylistName, start+1, end, len(m.selectedPlaylistTracks), scrollIndicator))
+
+		if m.statusMessage != "" {
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Render("  "+m.statusMessage) + "\n\n")
+		}
+
+		for i := start; i < end; i++ {
+			track := m.selectedPlaylistTracks[i]
 			prefix := "  "
 			if i == m.playlistTrackIndex && !m.focusSide {
 				prefix = "> "

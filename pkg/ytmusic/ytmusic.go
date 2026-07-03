@@ -32,14 +32,73 @@ func NewClient(httpClient *http.Client) (*Client, error) {
 	return &Client{it: it}, nil
 }
 
-// Search searches for tracks based on a query.
-func (c *Client) Search(query string) ([]Track, error) {
-	results, err := c.it.Search(&query, nil, nil)
+// Search searches for tracks based on a query, returning tracks and the next continuation token if available.
+func (c *Client) Search(query string) ([]Track, string, error) {
+	params := "EgWKAQIIAWoMEA4QChADEAQQCRAF"
+	results, err := c.it.Search(&query, &params, nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return parseTracks(results), nil
+	return parseTracks(results), findContinuationToken(results), nil
+}
+
+// SearchNextPage fetches the next page of search results using a continuation token.
+func (c *Client) SearchNextPage(token string) ([]Track, string, error) {
+	results, err := c.it.Search(nil, nil, &token)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return parseTracks(results), findContinuationToken(results), nil
+}
+
+func findContinuationToken(data map[string]interface{}) string {
+	var token string
+	var collect func(val interface{})
+	collect = func(val interface{}) {
+		if token != "" {
+			return
+		}
+		switch v := val.(type) {
+		case map[string]interface{}:
+			// Check nextContinuationData
+			if nextCont, exists := v["nextContinuationData"]; exists {
+				if nextContMap, ok := nextCont.(map[string]interface{}); ok {
+					if tok, ok := nextContMap["continuation"].(string); ok {
+						token = tok
+						return
+					}
+				}
+			}
+			// Check continuationItemRenderer
+			if contItem, exists := v["continuationItemRenderer"]; exists {
+				if contItemMap, ok := contItem.(map[string]interface{}); ok {
+					if contEndpoint, exists := contItemMap["continuationEndpoint"]; exists {
+						if contEndpointMap, ok := contEndpoint.(map[string]interface{}); ok {
+							if command, exists := contEndpointMap["continuationCommand"]; exists {
+								if commandMap, ok := command.(map[string]interface{}); ok {
+									if tok, ok := commandMap["token"].(string); ok {
+										token = tok
+										return
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			for _, valItem := range v {
+				collect(valItem)
+			}
+		case []interface{}:
+			for _, valItem := range v {
+				collect(valItem)
+			}
+		}
+	}
+	collect(data)
+	return token
 }
 
 // GetSuggestions retrieves suggestions (up next / radio) for a video.
