@@ -66,6 +66,7 @@ func (p *Player) Start() error {
 		"--idle=yes",
 		"--really-quiet",
 		"--msg-level=all=error",
+		"--af=@myfilter:lavfi=[astats=metadata=1]",
 		fmt.Sprintf("--input-ipc-server=%s", p.ipcPath),
 	}
 
@@ -106,6 +107,7 @@ func (p *Player) Start() error {
 	p.observeProperty("duration")
 	p.observeProperty("pause")
 	p.observeProperty("volume")
+	p.observeProperty("af-metadata/myfilter")
 
 	return nil
 }

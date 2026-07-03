@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"strings"
 	"time"
@@ -82,7 +83,8 @@ type Model struct {
 	statusMessage string
 
 	// Equalizer State
-	equalizerBars []int
+	equalizerBars    []int
+	currentIntensity float64
 
 	// Window Dimensions
 	width  int
@@ -569,18 +571,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case equalizerTickMsg:
 		if m.isPlaying {
 			for i := range m.equalizerBars {
-				// Random step of -2, -1, 0, +1, +2
-				delta := rand.Intn(5) - 2
-				newVal := m.equalizerBars[i] + delta
+				// Arched frequency spectrum envelope using sine wave
+				factor := math.Sin(float64(i) / float64(len(m.equalizerBars)-1) * math.Pi)
+				// Simulated frequency band activity using a fluctuating noise factor
+				noise := 0.15 + rand.Float64()*0.85
+				colMaxHeight := 1.0 + m.currentIntensity*4.0*factor*noise
+
+				target := colMaxHeight
+				current := float64(m.equalizerBars[i])
+
+				var newVal float64
+				if target > current {
+					// Rise instantly to capture the simulated frequency peak
+					newVal = math.Round(target)
+				} else {
+					// Fall down smoothly (gravity decay)
+					newVal = current - 0.5
+				}
+
 				if newVal < 1 {
 					newVal = 1
 				} else if newVal > 5 {
 					newVal = 5
 				}
-				if newVal == 1 && rand.Float32() < 0.2 {
-					newVal = rand.Intn(3) + 2
-				}
-				m.equalizerBars[i] = newVal
+				m.equalizerBars[i] = int(newVal)
 			}
 		} else {
 			for i := range m.equalizerBars {
@@ -665,6 +679,21 @@ func (m *Model) handleMpvEvent(ev player.Event) {
 		case "volume":
 			if val, ok := ev.Data.(float64); ok {
 				m.volume = int(val)
+			}
+		case "af-metadata/myfilter":
+			if metadataMap, ok := ev.Data.(map[string]interface{}); ok {
+				if rmsStr, ok := metadataMap["lavfi.astats.Overall.RMS_level"].(string); ok {
+					var rms float64
+					if _, err := fmt.Sscanf(rmsStr, "%f", &rms); err == nil {
+						// rms maps from around -35 (quiet) to -10 (loud)
+						if rms < -35 {
+							rms = -35
+						} else if rms > -10 {
+							rms = -10
+						}
+						m.currentIntensity = (rms + 35.0) / 25.0
+					}
+				}
 			}
 		}
 	case "end-file":
@@ -933,15 +962,23 @@ func (m *Model) renderFooter(width int) string {
 	if m.isLoading {
 		msg := " Resolving stream & buffering... "
 		pad := barWidth - len(msg)
+		var line string
 		if pad > 0 {
 			left := pad / 2
 			right := pad - left
-			progress = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD700")).Render(
+			line = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD700")).Render(
 				strings.Repeat("▰", left) + msg + strings.Repeat("▰", right),
 			)
 		} else {
-			progress = msg
+			line = msg
 		}
+		progress = strings.Join([]string{
+			"",
+			"",
+			line,
+			"",
+			"",
+		}, "\n")
 	} else if barWidth > 0 {
 		// Ensure equalizerBars size matches barWidth exactly
 		if len(m.equalizerBars) != barWidth {
