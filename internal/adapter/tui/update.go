@@ -42,6 +42,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.player.Stop()
 			return m, tea.Quit
 
+		case "t":
+			if m.activeView != ViewSearch || !m.searchInput.Focused() {
+				m.themeIndex = (m.themeIndex + 1) % len(model.PresetNames)
+				nextName := model.PresetNames[m.themeIndex]
+				m.theme = model.PresetThemes[nextName]
+				m.statusMessage = fmt.Sprintf("Theme: %s", m.theme.Name)
+				return m, ClearStatusAfter(2 * time.Second)
+			}
+
 		// Global playback shortcuts (when not typing in search box)
 		case "space", " ":
 			if m.activeView == ViewMCP && !m.focusSide {

@@ -18,6 +18,7 @@ func (m *Model) renderHome() string {
 	sb.WriteString("  - n / p     : Skip to Next / Previous track\n")
 	sb.WriteString("  - [ / ]     : Decrease / Increase volume\n")
 	sb.WriteString("  - Left/Right: Seek 10s backward / forward\n")
+	sb.WriteString("  - t         : Cycle color themes (iOS, Amber, Catppuccin, Nord, Dracula)\n")
 	sb.WriteString("  - q         : Exit program\n\n")
 	sb.WriteString("  Note: Requires 'mpv' and 'yt-dlp' installed on your system.\n")
 	return sb.String()

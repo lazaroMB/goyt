@@ -13,10 +13,10 @@ func (m *Model) renderMCP() string {
 
 	// Status line
 	status := "ON"
-	statusColor := "#00FF00" // Green
+	statusColor := m.theme.Success
 	if m.mcpEnabled != nil && !m.mcpEnabled.Load() {
 		status = "OFF"
-		statusColor = "#FF0000" // Red
+		statusColor = m.theme.Error
 	}
 
 	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor)).Bold(true)
@@ -24,10 +24,10 @@ func (m *Model) renderMCP() string {
 
 	// Client connection status
 	clientConnected := "No"
-	clientColor := "#555555" // Gray
+	clientColor := m.theme.Muted
 	if m.mcpConnections > 0 {
 		clientConnected = fmt.Sprintf("Yes (%d active connection(s))", m.mcpConnections)
-		clientColor = "#00FFFF" // Cyan
+		clientColor = m.theme.Info
 	}
 	clientStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(clientColor)).Bold(true)
 	sb.WriteString(fmt.Sprintf("  Client Connected: %s\n\n", clientStyle.Render(clientConnected)))
@@ -46,7 +46,7 @@ func (m *Model) renderMCP() string {
 		sb.WriteString("  (Press [Tab] to focus this pane and enable controls)\n")
 	} else {
 		selectedToggleStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#121212")).
+			Foreground(lipgloss.Color(m.theme.TextOnAccent)).
 			Background(lipgloss.Color(m.theme.PrimaryHighlight)).
 			Padding(0, 1).
 			Bold(true)

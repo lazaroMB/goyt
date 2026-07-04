@@ -20,7 +20,9 @@ func (m *Model) View() string {
 		Width(mainWidth).
 		Height(mainHeight - 2).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(m.theme.InactiveBorder))
+		BorderForeground(lipgloss.Color(m.theme.InactiveBorder)).
+		Background(lipgloss.Color(m.theme.Surface)).
+		Foreground(lipgloss.Color(m.theme.TextPrimary))
 
 	if !m.focusSide {
 		mainStyle = mainStyle.BorderForeground(lipgloss.Color(m.theme.PrimaryHighlight))

@@ -13,7 +13,7 @@ func (m *Model) renderSearch() string {
 	sb.WriteString(fmt.Sprintf("  %s\n\n", m.searchInput.View()))
 
 	if m.statusMessage != "" {
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Render("  "+m.statusMessage) + "\n\n")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Success)).Render("  "+m.statusMessage) + "\n\n")
 	}
 
 	if m.isSearching {

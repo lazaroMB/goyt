@@ -12,11 +12,24 @@ import (
 
 // ConfigJSON matches the format of config.json
 type ConfigJSON struct {
-	Cookie string `json:"cookie"`
-	Theme  *struct {
+	Cookie    string `json:"cookie"`
+	ThemeName string `json:"theme_name,omitempty"`
+	Theme     *struct {
 		PrimaryHighlight   string   `json:"primary_highlight"`
 		SecondaryHighlight string   `json:"secondary_highlight"`
 		InactiveBorder     string   `json:"inactive_border"`
+		Background         string   `json:"background,omitempty"`
+		Surface            string   `json:"surface,omitempty"`
+		TextPrimary        string   `json:"text_primary,omitempty"`
+		TextSecondary      string   `json:"text_secondary,omitempty"`
+		TextOnAccent       string   `json:"text_on_accent,omitempty"`
+		Success            string   `json:"success,omitempty"`
+		Error              string   `json:"error,omitempty"`
+		Warning            string   `json:"warning,omitempty"`
+		Info               string   `json:"info,omitempty"`
+		Muted              string   `json:"muted,omitempty"`
+		EqualizerBg        string   `json:"equalizer_bg,omitempty"`
+		HeaderTitle        string   `json:"header_title,omitempty"`
 		VisualizerPlayed   []string `json:"visualizer_played"`
 		VisualizerUnplayed []string `json:"visualizer_unplayed"`
 		EqualizerChar      string   `json:"equalizer_char"`
@@ -50,29 +63,24 @@ func (a *JsonConfigAdapter) LoadTheme() (*model.Theme, error) {
 		return nil, err
 	}
 
-	// Default DEC VT220 Amber values
-	theme := &model.Theme{
-		PrimaryHighlight:   "#FFB000",
-		SecondaryHighlight: "#FFD700",
-		InactiveBorder:     "#3C3C3C",
-		VisualizerPlayed: []model.RGB{
-			{R: 211, G: 84, B: 0},
-			{R: 254, G: 153, B: 0},
-			{R: 255, G: 215, B: 0},
-		},
-		VisualizerUnplayed: []model.RGB{
-			{R: 62, G: 35, B: 0},
-			{R: 90, G: 57, B: 0},
-			{R: 122, G: 82, B: 0},
-		},
-		EqualizerChar:      '●',
+	// Start from a named preset (default: ios-dark)
+	presetName := cfg.ThemeName
+	if presetName == "" {
+		presetName = model.DefaultThemeName
 	}
+	base, ok := model.PresetThemes[presetName]
+	if !ok {
+		base = model.PresetThemes[model.DefaultThemeName]
+	}
+	theme := base // copy
 
 	if cfg.Theme == nil {
-		return theme, nil
+		return &theme, nil
 	}
 
 	t := cfg.Theme
+
+	// Overlay string fields
 	if t.PrimaryHighlight != "" {
 		theme.PrimaryHighlight = t.PrimaryHighlight
 	}
@@ -81,6 +89,42 @@ func (a *JsonConfigAdapter) LoadTheme() (*model.Theme, error) {
 	}
 	if t.InactiveBorder != "" {
 		theme.InactiveBorder = t.InactiveBorder
+	}
+	if t.Background != "" {
+		theme.Background = t.Background
+	}
+	if t.Surface != "" {
+		theme.Surface = t.Surface
+	}
+	if t.TextPrimary != "" {
+		theme.TextPrimary = t.TextPrimary
+	}
+	if t.TextSecondary != "" {
+		theme.TextSecondary = t.TextSecondary
+	}
+	if t.TextOnAccent != "" {
+		theme.TextOnAccent = t.TextOnAccent
+	}
+	if t.Success != "" {
+		theme.Success = t.Success
+	}
+	if t.Error != "" {
+		theme.Error = t.Error
+	}
+	if t.Warning != "" {
+		theme.Warning = t.Warning
+	}
+	if t.Info != "" {
+		theme.Info = t.Info
+	}
+	if t.Muted != "" {
+		theme.Muted = t.Muted
+	}
+	if t.EqualizerBg != "" {
+		theme.EqualizerBg = t.EqualizerBg
+	}
+	if t.HeaderTitle != "" {
+		theme.HeaderTitle = t.HeaderTitle
 	}
 
 	parseHexColor := func(s string) (model.RGB, error) {
@@ -133,7 +177,7 @@ func (a *JsonConfigAdapter) LoadTheme() (*model.Theme, error) {
 		}
 	}
 
-	return theme, nil
+	return &theme, nil
 }
 
 func (a *JsonConfigAdapter) readConfig() (*ConfigJSON, error) {

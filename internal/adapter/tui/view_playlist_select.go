@@ -13,7 +13,7 @@ func (m *Model) renderPlaylistSelect() string {
 	sb.WriteString(fmt.Sprintf("  Song: %s - %s\n\n", m.trackToManage.Artist, m.trackToManage.Title))
 
 	if m.statusMessage != "" {
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Render("  "+m.statusMessage) + "\n\n")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Success)).Render("  "+m.statusMessage) + "\n\n")
 	}
 
 	if m.creatingPlaylist {

@@ -97,7 +97,7 @@ func (m *Model) renderFooter(width int) string {
 					colorHex := m.interpolateColorDim(factor)
 					style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
 				} else {
-					style = lipgloss.NewStyle().Foreground(lipgloss.Color("#1C1C1C"))
+					style = lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.EqualizerBg))
 				}
 				rows[y].WriteString(style.Render(string(char)))
 			}
@@ -134,7 +134,9 @@ func (m *Model) renderFooter(width int) string {
 	footerStyle := lipgloss.NewStyle().
 		Width(width).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(m.theme.InactiveBorder))
+		BorderForeground(lipgloss.Color(m.theme.InactiveBorder)).
+		Background(lipgloss.Color(m.theme.Surface)).
+		Foreground(lipgloss.Color(m.theme.TextPrimary))
 
 	return footerStyle.Render(sb.String())
 }

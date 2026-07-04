@@ -11,7 +11,9 @@ func (m *Model) renderSidebar(sidebarWidth, mainHeight int) string {
 		Width(sidebarWidth).
 		Height(mainHeight - 2).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(m.theme.PrimaryHighlight))
+		BorderForeground(lipgloss.Color(m.theme.PrimaryHighlight)).
+		Background(lipgloss.Color(m.theme.Background)).
+		Foreground(lipgloss.Color(m.theme.TextPrimary))
 
 	if !m.focusSide {
 		sidebarStyle = sidebarStyle.BorderForeground(lipgloss.Color(m.theme.InactiveBorder))
@@ -26,12 +28,13 @@ func (m *Model) renderSidebar(sidebarWidth, mainHeight int) string {
 	for i, v := range views {
 		if i == m.sidebarIndex {
 			selectedStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#121212")).
+				Foreground(lipgloss.Color(m.theme.TextOnAccent)).
 				Background(lipgloss.Color(m.theme.PrimaryHighlight)).
 				Bold(true)
 			sbBuilder.WriteString(selectedStyle.Render(v) + "\n")
 		} else {
-			sbBuilder.WriteString(v + "\n")
+			unselectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TextSecondary))
+			sbBuilder.WriteString(unselectedStyle.Render(v) + "\n")
 		}
 	}
 	return sidebarStyle.Render(sbBuilder.String())

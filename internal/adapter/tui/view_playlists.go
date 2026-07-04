@@ -25,7 +25,7 @@ func (m *Model) renderPlaylists() string {
 
 	if m.confirmDeletePlaylist {
 		sb.WriteString("  Your Playlists:\n\n")
-		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000")).Bold(true).Render(
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Error)).Bold(true).Render(
 			fmt.Sprintf("  ⚠️  Are you sure you want to delete playlist %q?", m.playlistToDelete.Title),
 		) + "\n\n")
 		sb.WriteString("  [ Press 'y' to Confirm | Press 'n' or Esc to Cancel ]\n")
@@ -47,7 +47,7 @@ func (m *Model) renderPlaylists() string {
 		if len(m.libraryPlaylists) == 0 {
 			sb.WriteString("  Your Playlists:\n\n")
 			if m.statusMessage != "" {
-				sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Render("  "+m.statusMessage) + "\n\n")
+				sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Success)).Render("  "+m.statusMessage) + "\n\n")
 			}
 			sb.WriteString("  No playlists found in your library.\n")
 			return sb.String()
@@ -67,7 +67,7 @@ func (m *Model) renderPlaylists() string {
 		sb.WriteString(fmt.Sprintf("  Your Playlists (showing %d-%d of %d)%s:\n\n", start+1, end, len(m.libraryPlaylists), scrollIndicator))
 
 		if m.statusMessage != "" {
-			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Render("  "+m.statusMessage) + "\n\n")
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Success)).Render("  "+m.statusMessage) + "\n\n")
 		}
 
 		for i := start; i < end; i++ {
@@ -97,7 +97,7 @@ func (m *Model) renderPlaylists() string {
 		if len(m.selectedPlaylistTracks) == 0 {
 			sb.WriteString(fmt.Sprintf("  Playlist: %s\n\n", m.selectedPlaylistName))
 			if m.statusMessage != "" {
-				sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Render("  "+m.statusMessage) + "\n\n")
+				sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Success)).Render("  "+m.statusMessage) + "\n\n")
 			}
 			sb.WriteString("  No tracks in this playlist.\n")
 			sb.WriteString("  [ Press Esc to go back ]\n")
@@ -118,7 +118,7 @@ func (m *Model) renderPlaylists() string {
 		sb.WriteString(fmt.Sprintf("  Playlist: %s (showing %d-%d of %d)%s\n\n", m.selectedPlaylistName, start+1, end, len(m.selectedPlaylistTracks), scrollIndicator))
 
 		if m.statusMessage != "" {
-			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Render("  "+m.statusMessage) + "\n\n")
+			sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Success)).Render("  "+m.statusMessage) + "\n\n")
 		}
 
 		for i := start; i < end; i++ {

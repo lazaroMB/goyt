@@ -147,6 +147,9 @@ type Model struct {
 	mcpEnabled     *atomic.Bool
 	mcpConnections int
 
+	// Theme cycling
+	themeIndex int
+
 	// Window Dimensions
 	width  int
 	height int
@@ -168,22 +171,14 @@ func NewModel(catalog port.MusicCatalogPort, player port.AudioPlayerPort, q *mod
 	if theme != nil {
 		t = *theme
 	} else {
-		// Fallback defaults
-		t = model.Theme{
-			PrimaryHighlight:   "#FFB000",
-			SecondaryHighlight: "#FFD700",
-			InactiveBorder:     "#3C3C3C",
-			VisualizerPlayed: []model.RGB{
-				{R: 211, G: 84, B: 0},
-				{R: 254, G: 153, B: 0},
-				{R: 255, G: 215, B: 0},
-			},
-			VisualizerUnplayed: []model.RGB{
-				{R: 62, G: 35, B: 0},
-				{R: 90, G: 57, B: 0},
-				{R: 122, G: 82, B: 0},
-			},
-			EqualizerChar:      '●',
+		t = model.PresetThemes[model.DefaultThemeName]
+	}
+
+	themeIdx := 0
+	for i, name := range model.PresetNames {
+		if name == t.Name {
+			themeIdx = i
+			break
 		}
 	}
 
@@ -201,6 +196,7 @@ func NewModel(catalog port.MusicCatalogPort, player port.AudioPlayerPort, q *mod
 		equalizerBars:  make([]int, 80), // default to 80 columns like we updated earlier
 		mcpEnabled:     mcpEnabled,
 		mcpConnections: 0,
+		themeIndex:     themeIdx,
 	}
 }
 
