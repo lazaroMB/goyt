@@ -20,6 +20,7 @@ const (
 	ViewPlaylists
 	ViewQueue
 	ViewMCP
+	ViewPlaylistSelect
 )
 
 type ClearStatusMsg struct{}
@@ -83,6 +84,9 @@ type MCPConnectionsMsg struct {
 	Count int
 }
 
+// MCPRefreshPlaylistsMsg requests the TUI to reload playlists
+type MCPRefreshPlaylistsMsg struct{}
+
 type Model struct {
 	theme      model.Theme
 	catalog    port.MusicCatalogPort
@@ -114,6 +118,13 @@ type Model struct {
 	isLoadingPlaylists     bool
 	playlistsError         error
 
+	// Playlist Selector State (for adding track to playlist)
+	previousView        ActiveView
+	trackToManage       model.Track
+	playlistSelectIndex int
+	creatingPlaylist    bool
+	playlistInput       textinput.Model
+
 	// Player State (synced from mpv)
 	isPlaying     bool
 	duration      float64
@@ -143,6 +154,11 @@ func NewModel(catalog port.MusicCatalogPort, player port.AudioPlayerPort, q *mod
 	ti.Focus()
 	ti.CharLimit = 156
 	ti.Width = 40
+
+	pi := textinput.New()
+	pi.Placeholder = "Enter new playlist name..."
+	pi.CharLimit = 100
+	pi.Width = 40
 
 	var t model.Theme
 	if theme != nil {
@@ -176,6 +192,7 @@ func NewModel(catalog port.MusicCatalogPort, player port.AudioPlayerPort, q *mod
 		focusSide:      true,
 		sidebarIndex:   0,
 		searchInput:    ti,
+		playlistInput:  pi,
 		volume:         70,
 		equalizerBars:  make([]int, 80), // default to 80 columns like we updated earlier
 		mcpEnabled:     mcpEnabled,

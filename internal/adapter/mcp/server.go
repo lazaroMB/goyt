@@ -144,6 +144,33 @@ func (s *Server) Start() error {
 	)
 	mcpServer.AddTool(getPlaybackInfoTool, s.handleGetPlaybackInfo)
 
+	// 8. Create Playlist Tool
+	createPlaylistTool := mcp.NewTool("create_playlist",
+		mcp.WithDescription("Create a new private playlist in the library."),
+		mcp.WithString("name",
+			mcp.Required(),
+			mcp.Description("The name of the playlist to create"),
+		),
+		mcp.WithString("description",
+			mcp.Description("Optional description for the playlist"),
+		),
+	)
+	mcpServer.AddTool(createPlaylistTool, s.handleCreatePlaylist)
+
+	// 9. Add Track to Playlist Tool
+	addTrackToPlaylistTool := mcp.NewTool("add_track_to_playlist",
+		mcp.WithDescription("Add a specific song/track to a new or existing playlist."),
+		mcp.WithString("playlist_id",
+			mcp.Required(),
+			mcp.Description("The ID of the playlist (e.g. PL... or VL...)"),
+		),
+		mcp.WithString("video_id",
+			mcp.Required(),
+			mcp.Description("The YouTube video ID of the track to add"),
+		),
+	)
+	mcpServer.AddTool(addTrackToPlaylistTool, s.handleAddTrackToPlaylist)
+
 	// Create and start the Streamable HTTP server
 	httpServer := server.NewStreamableHTTPServer(mcpServer,
 		server.WithEndpointPath("/sse"),
@@ -366,4 +393,48 @@ func (s *Server) handleGetPlaybackInfo(ctx context.Context, request mcp.CallTool
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+func (s *Server) handleCreatePlaylist(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	name, err := request.RequireString("name")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	description := ""
+	if argsMap, ok := request.Params.Arguments.(map[string]any); ok {
+		if descVal, exists := argsMap["description"]; exists {
+			if descStr, ok := descVal.(string); ok {
+				description = descStr
+			}
+		}
+	}
+
+	playlistID, err := s.catalog.CreatePlaylist(name, description)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to create playlist: %v", err)), nil
+	}
+
+	// Request TUI to reload playlists cache
+	s.program.Send(tui.MCPRefreshPlaylistsMsg{})
+
+	return mcp.NewToolResultText(fmt.Sprintf("Successfully created private playlist %q (ID: %s).", name, playlistID)), nil
+}
+
+func (s *Server) handleAddTrackToPlaylist(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	playlistID, err := request.RequireString("playlist_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	videoID, err := request.RequireString("video_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	err = s.catalog.AddTrackToPlaylist(playlistID, videoID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to add track to playlist: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("Successfully added track (ID: %s) to playlist (ID: %s).", videoID, playlistID)), nil
 }

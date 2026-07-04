@@ -83,3 +83,11 @@ func (a *YtMusicCatalogAdapter) GetPlaylistTracks(playlistID string) ([]model.Tr
 	}
 	return toDomainTracks(tracks), nil
 }
+
+func (a *YtMusicCatalogAdapter) CreatePlaylist(name string, description string) (string, error) {
+	return a.client.CreatePlaylist(name, description)
+}
+
+func (a *YtMusicCatalogAdapter) AddTrackToPlaylist(playlistID string, videoID string) error {
+	return a.client.AddTrackToPlaylist(playlistID, videoID)
+}

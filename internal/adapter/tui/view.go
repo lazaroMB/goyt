@@ -45,6 +45,8 @@ func (m *Model) View() string {
 		mainView = m.renderQueue()
 	case ViewMCP:
 		mainView = m.renderMCP()
+	case ViewPlaylistSelect:
+		mainView = m.renderPlaylistSelect()
 	}
 	mainPanel := mainStyle.Render(mainView)
 

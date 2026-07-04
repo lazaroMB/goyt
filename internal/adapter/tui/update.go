@@ -139,6 +139,41 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
+		case "m", "M":
+			if !m.focusSide {
+				var track model.Track
+				var hasTrack bool
+
+				switch m.activeView {
+				case ViewSearch:
+					if !m.searchInput.Focused() && len(m.searchResults) > 0 {
+						track = m.searchResults[m.searchListIndex]
+						hasTrack = true
+					}
+				case ViewPlaylists:
+					if m.inPlaylistDetail && len(m.selectedPlaylistTracks) > 0 {
+						track = m.selectedPlaylistTracks[m.playlistTrackIndex]
+						hasTrack = true
+					}
+				case ViewQueue:
+					if len(m.queue.List()) > 0 {
+						track = m.queue.List()[m.queueListIndex]
+						hasTrack = true
+					}
+				}
+
+				if hasTrack {
+					m.previousView = m.activeView
+					m.trackToManage = track
+					m.playlistSelectIndex = 0
+					m.creatingPlaylist = false
+					m.activeView = ViewPlaylistSelect
+					m.playlistInput.Reset()
+					m.playlistInput.Blur()
+					return m, nil
+				}
+			}
+
 		case "tab":
 			m.focusSide = !m.focusSide
 			if !m.focusSide && m.activeView == ViewSearch {
@@ -171,6 +206,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				case ViewQueue:
 					m.queueListIndex = max(0, m.queueListIndex-1)
+				case ViewPlaylistSelect:
+					if !m.creatingPlaylist {
+						m.playlistSelectIndex = max(0, m.playlistSelectIndex-1)
+					}
 				}
 			}
 			return m, tea.Batch(cmds...)
@@ -202,6 +241,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				case ViewQueue:
 					m.queueListIndex = min(len(m.queue.List())-1, m.queueListIndex+1)
+				case ViewPlaylistSelect:
+					if !m.creatingPlaylist {
+						totalOptions := len(m.libraryPlaylists) + 1
+						m.playlistSelectIndex = min(totalOptions-1, m.playlistSelectIndex+1)
+					}
 				}
 			}
 			return m, tea.Batch(cmds...)
@@ -281,6 +325,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.statusMessage = fmt.Sprintf("MCP Server toggled %s", stateStr)
 						return m, ClearStatusAfter(3*time.Second)
 					}
+				case ViewPlaylistSelect:
+					if m.creatingPlaylist {
+						name := m.playlistInput.Value()
+						if name != "" {
+							m.statusMessage = fmt.Sprintf("Creating playlist %q and adding track...", name)
+							cmds = append(cmds, m.CreatePlaylistAndAddTrackCmd(name, "", m.trackToManage))
+						}
+						m.playlistInput.Reset()
+						m.playlistInput.Blur()
+						m.creatingPlaylist = false
+						m.activeView = m.previousView
+					} else if m.playlistSelectIndex == 0 {
+						m.creatingPlaylist = true
+						m.playlistInput.Focus()
+					} else {
+						pl := m.libraryPlaylists[m.playlistSelectIndex-1]
+						m.statusMessage = fmt.Sprintf("Adding track to playlist %q...", pl.Title)
+						cmds = append(cmds, m.AddTrackToPlaylistCmd(pl.ID, pl.Title, m.trackToManage))
+						m.activeView = m.previousView
+					}
 				}
 			}
 			return m, tea.Batch(cmds...)
@@ -303,6 +367,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "esc":
+			if m.activeView == ViewPlaylistSelect {
+				if m.creatingPlaylist {
+					m.creatingPlaylist = false
+					m.playlistInput.Reset()
+					m.playlistInput.Blur()
+				} else {
+					m.activeView = m.previousView
+				}
+				return m, nil
+			}
 			if m.activeView == ViewPlaylists && m.inPlaylistDetail {
 				m.inPlaylistDetail = false
 				return m, nil
@@ -411,6 +485,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case MCPConnectionsMsg:
 		m.mcpConnections = msg.Count
 		return m, nil
+
+	case MCPRefreshPlaylistsMsg:
+		m.isLoadingPlaylists = true
+		m.playlistsError = nil
+		return m, m.loadPlaylistsCmd()
+
+	case playlistCreatedAndAddedMsg:
+		m.statusMessage = fmt.Sprintf("Created playlist %q and added %q", msg.playlistName, msg.trackTitle)
+		m.isLoadingPlaylists = true
+		return m, tea.Batch(m.loadPlaylistsCmd(), ClearStatusAfter(4*time.Second))
+
+	case playlistAddedMsg:
+		m.statusMessage = fmt.Sprintf("Added %q to playlist %q", msg.trackTitle, msg.playlistName)
+		return m, ClearStatusAfter(4*time.Second)
+
+	case playlistAddError:
+		m.statusMessage = fmt.Sprintf("Error: %v", msg.err)
+		return m, ClearStatusAfter(5*time.Second)
 
 	case ClearStatusMsg:
 		m.statusMessage = ""
@@ -548,6 +640,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 
+	if m.activeView == ViewPlaylistSelect && m.playlistInput.Focused() {
+		m.playlistInput, cmd = m.playlistInput.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
 	return m, tea.Batch(cmds...)
 }
 
@@ -622,3 +719,31 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+func (m *Model) CreatePlaylistAndAddTrackCmd(name, description string, track model.Track) tea.Cmd {
+	return func() tea.Msg {
+		playlistID, err := m.catalog.CreatePlaylist(name, description)
+		if err != nil {
+			return playlistAddError{err: err}
+		}
+		err = m.catalog.AddTrackToPlaylist(playlistID, track.VideoID)
+		if err != nil {
+			return playlistAddError{err: err}
+		}
+		return playlistCreatedAndAddedMsg{playlistName: name, trackTitle: track.Title}
+	}
+}
+
+func (m *Model) AddTrackToPlaylistCmd(playlistID, playlistName string, track model.Track) tea.Cmd {
+	return func() tea.Msg {
+		err := m.catalog.AddTrackToPlaylist(playlistID, track.VideoID)
+		if err != nil {
+			return playlistAddError{err: err}
+		}
+		return playlistAddedMsg{playlistName: playlistName, trackTitle: track.Title}
+	}
+}
+
+type playlistAddError struct{ err error }
+type playlistCreatedAndAddedMsg struct{ playlistName, trackTitle string }
+type playlistAddedMsg struct{ playlistName, trackTitle string }

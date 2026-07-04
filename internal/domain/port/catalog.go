@@ -7,4 +7,6 @@ type MusicCatalogPort interface {
 	SearchNextPage(token string) ([]model.Track, string, error)
 	GetLibraryPlaylists() ([]model.Playlist, error)
 	GetPlaylistTracks(playlistID string) ([]model.Track, error)
+	CreatePlaylist(name string, description string) (string, error)
+	AddTrackToPlaylist(playlistID string, videoID string) error
 }

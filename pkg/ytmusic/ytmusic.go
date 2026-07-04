@@ -539,3 +539,35 @@ func extractGridPlaylist(v interface{}) (Playlist, bool) {
 		Count: count,
 	}, true
 }
+
+// CreatePlaylist creates a new private playlist on YouTube Music and returns its ID.
+func (c *Client) CreatePlaylist(title, description string) (string, error) {
+	body := map[string]interface{}{
+		"title":         title,
+		"description":   description,
+		"privacyStatus": "PRIVATE",
+	}
+	resp, err := c.it.Call("PLAYLIST/CREATE", nil, body)
+	if err != nil {
+		return "", err
+	}
+	if playlistID, ok := resp["playlistId"].(string); ok {
+		return playlistID, nil
+	}
+	return "", fmt.Errorf("playlistId not found in response")
+}
+
+// AddTrackToPlaylist adds a video/track to an existing playlist.
+func (c *Client) AddTrackToPlaylist(playlistID, videoID string) error {
+	body := map[string]interface{}{
+		"playlistId": playlistID,
+		"actions": []interface{}{
+			map[string]interface{}{
+				"action":       "ACTION_ADD_VIDEO",
+				"addedVideoId": videoID,
+			},
+		},
+	}
+	_, err := c.it.Call("BROWSE/EDIT_PLAYLIST", nil, body)
+	return err
+}
