@@ -36,7 +36,7 @@ func (m *Model) renderSearch() string {
 	if m.statusMessage != "" {
 		overhead = 7
 	}
-	mainHeight := m.height - 10
+	mainHeight := m.height - 11
 	maxVisible := mainHeight - 2 - overhead
 	if maxVisible < 5 {
 		maxVisible = 5

@@ -23,7 +23,7 @@ func (m *Model) renderPlaylists() string {
 		return sb.String()
 	}
 
-	mainHeight := m.height - 10
+	mainHeight := m.height - 11
 
 	if !m.inPlaylistDetail {
 		overhead := 4

@@ -210,7 +210,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.focusSide {
 				m.focusSide = false
 				if m.activeView == ViewSearch {
-					m.searchInput.Focus()
+					if len(m.searchResults) == 0 {
+						m.searchInput.Focus()
+					} else {
+						m.searchInput.Blur()
+					}
 				}
 			} else {
 				switch m.activeView {
