@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
+	"sync/atomic"
 	"time"
 
 	"goyt/internal/adapter/tui"
@@ -16,17 +18,51 @@ import (
 )
 
 type Server struct {
-	catalog port.MusicCatalogPort
-	program *tea.Program
-	port    int
+	catalog    port.MusicCatalogPort
+	program    *tea.Program
+	port       int
+	enabled    *atomic.Bool
+	activeConn int32
 }
 
-func NewServer(catalog port.MusicCatalogPort, program *tea.Program, portNum int) *Server {
+func NewServer(catalog port.MusicCatalogPort, program *tea.Program, portNum int, enabled *atomic.Bool) *Server {
 	return &Server{
 		catalog: catalog,
 		program: program,
 		port:    portNum,
+		enabled: enabled,
 	}
+}
+
+type trackingHandler struct {
+	next            http.Handler
+	enabled         *atomic.Bool
+	program         *tea.Program
+	activeConnCount *int32
+}
+
+func (h *trackingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/sse" {
+		if r.Method == http.MethodGet {
+			if !h.enabled.Load() {
+				http.Error(w, "MCP server is disabled", http.StatusServiceUnavailable)
+				return
+			}
+			count := atomic.AddInt32(h.activeConnCount, 1)
+			h.program.Send(tui.MCPConnectionsMsg{Count: int(count)})
+			defer func() {
+				count := atomic.AddInt32(h.activeConnCount, -1)
+				h.program.Send(tui.MCPConnectionsMsg{Count: int(count)})
+			}()
+		} else if r.Method == http.MethodPost {
+			if !h.enabled.Load() {
+				http.Error(w, "MCP server is disabled", http.StatusServiceUnavailable)
+				return
+			}
+		}
+	}
+
+	h.next.ServeHTTP(w, r)
 }
 
 func (s *Server) Start() error {
@@ -112,8 +148,21 @@ func (s *Server) Start() error {
 	httpServer := server.NewStreamableHTTPServer(mcpServer,
 		server.WithEndpointPath("/sse"),
 	)
+
+	wrappedHandler := &trackingHandler{
+		next:            httpServer,
+		enabled:         s.enabled,
+		program:         s.program,
+		activeConnCount: &s.activeConn,
+	}
+
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", s.port),
+		Handler: wrappedHandler,
+	}
+
 	log.Printf("Starting MCP Streamable HTTP server on http://localhost:%d/sse", s.port)
-	return httpServer.Start(fmt.Sprintf(":%d", s.port))
+	return srv.ListenAndServe()
 }
 
 func (s *Server) handleSearch(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"goyt/internal/domain/model"
@@ -18,6 +19,7 @@ const (
 	ViewSearch
 	ViewPlaylists
 	ViewQueue
+	ViewMCP
 )
 
 type ClearStatusMsg struct{}
@@ -76,6 +78,11 @@ type MCPGetPlaybackInfoMsg struct {
 	ResponseChan chan PlaybackInfo
 }
 
+// MCPConnectionsMsg notifies the TUI of active client connections count
+type MCPConnectionsMsg struct {
+	Count int
+}
+
 type Model struct {
 	theme      model.Theme
 	catalog    port.MusicCatalogPort
@@ -121,12 +128,16 @@ type Model struct {
 	equalizerBars    []int
 	currentIntensity float64
 
+	// MCP State
+	mcpEnabled     *atomic.Bool
+	mcpConnections int
+
 	// Window Dimensions
 	width  int
 	height int
 }
 
-func NewModel(catalog port.MusicCatalogPort, player port.AudioPlayerPort, q *model.Queue, theme *model.Theme) *Model {
+func NewModel(catalog port.MusicCatalogPort, player port.AudioPlayerPort, q *model.Queue, theme *model.Theme, mcpEnabled *atomic.Bool) *Model {
 	ti := textinput.New()
 	ti.Placeholder = "Search songs, artists..."
 	ti.Focus()
@@ -157,16 +168,18 @@ func NewModel(catalog port.MusicCatalogPort, player port.AudioPlayerPort, q *mod
 	}
 
 	return &Model{
-		theme:         t,
-		catalog:       catalog,
-		player:        player,
-		queue:         q,
-		activeView:    ViewHome,
-		focusSide:     true,
-		sidebarIndex:  0,
-		searchInput:   ti,
-		volume:        70,
-		equalizerBars: make([]int, 80), // default to 80 columns like we updated earlier
+		theme:          t,
+		catalog:        catalog,
+		player:         player,
+		queue:          q,
+		activeView:     ViewHome,
+		focusSide:      true,
+		sidebarIndex:   0,
+		searchInput:    ti,
+		volume:         70,
+		equalizerBars:  make([]int, 80), // default to 80 columns like we updated earlier
+		mcpEnabled:     mcpEnabled,
+		mcpConnections: 0,
 	}
 }
 

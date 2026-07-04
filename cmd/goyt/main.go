@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"goyt/internal/adapter/catalog/ytmusic"
@@ -136,11 +137,14 @@ func main() {
 	q := model.NewQueue()
 
 	// 5. Initialize Bubble Tea UI
-	modelTui := tui.NewModel(client, p, q, theme)
+	mcpEnabled := &atomic.Bool{}
+	mcpEnabled.Store(true) // default value is on
+
+	modelTui := tui.NewModel(client, p, q, theme, mcpEnabled)
 	program := tea.NewProgram(modelTui, tea.WithAltScreen())
 
 	// Start MCP SSE Server in background (port 8080)
-	mcpServer := mcp.NewServer(client, program, 8080)
+	mcpServer := mcp.NewServer(client, program, 8080, mcpEnabled)
 	go func() {
 		if err := mcpServer.Start(); err != nil {
 			log.Printf("MCP Server error: %v", err)

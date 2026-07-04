@@ -26,6 +26,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Global playback shortcuts (when not typing in search box)
 		case "space", " ":
+			if m.activeView == ViewMCP && !m.focusSide {
+				if m.mcpEnabled != nil {
+					m.mcpEnabled.Store(!m.mcpEnabled.Load())
+					stateStr := "ON"
+					if !m.mcpEnabled.Load() {
+						stateStr = "OFF"
+					}
+					m.statusMessage = fmt.Sprintf("MCP Server toggled %s", stateStr)
+					return m, ClearStatusAfter(3*time.Second)
+				}
+				return m, nil
+			}
 			if m.activeView != ViewSearch || !m.searchInput.Focused() {
 				m.isPlaying = !m.isPlaying
 				_ = m.player.SetPause(!m.isPlaying)
@@ -165,7 +177,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "down", "j":
 			if m.focusSide {
-				m.sidebarIndex = min(3, m.sidebarIndex+1)
+				m.sidebarIndex = min(4, m.sidebarIndex+1)
 				m.activeView = ActiveView(m.sidebarIndex)
 				if m.activeView == ViewPlaylists && len(m.libraryPlaylists) == 0 {
 					m.isLoadingPlaylists = true
@@ -254,6 +266,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								cmds = append(cmds, m.PlayTrackCmd(track))
 							}
 						}
+					}
+				case ViewMCP:
+					if m.mcpEnabled != nil {
+						m.mcpEnabled.Store(!m.mcpEnabled.Load())
+						stateStr := "ON"
+						if !m.mcpEnabled.Load() {
+							stateStr = "OFF"
+						}
+						m.statusMessage = fmt.Sprintf("MCP Server toggled %s", stateStr)
+						return m, ClearStatusAfter(3*time.Second)
 					}
 				}
 			}
@@ -380,6 +402,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			TimePos:      m.timePos,
 			Volume:       m.volume,
 		}
+		return m, nil
+
+	case MCPConnectionsMsg:
+		m.mcpConnections = msg.Count
 		return m, nil
 
 	case ClearStatusMsg:
