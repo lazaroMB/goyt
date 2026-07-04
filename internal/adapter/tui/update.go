@@ -19,6 +19,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.confirmDeletePlaylist {
+			switch msg.String() {
+			case "y", "Y":
+				m.confirmDeletePlaylist = false
+				m.statusMessage = fmt.Sprintf("Deleting playlist %q...", m.playlistToDelete.Title)
+				m.isLoadingPlaylists = true
+				return m, tea.Batch(
+					m.DeletePlaylistCmd(m.playlistToDelete.ID, m.playlistToDelete.Title),
+					ClearStatusAfter(3*time.Second),
+				)
+			case "n", "N", "esc":
+				m.confirmDeletePlaylist = false
+				return m, nil
+			default:
+				return m, nil
+			}
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "q":
 			m.player.Stop()
@@ -170,6 +188,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.activeView = ViewPlaylistSelect
 					m.playlistInput.Reset()
 					m.playlistInput.Blur()
+					return m, nil
+				}
+			}
+
+		case "d", "D":
+			if !m.focusSide && m.activeView == ViewPlaylists && !m.inPlaylistDetail {
+				if len(m.libraryPlaylists) > 0 {
+					m.playlistToDelete = m.libraryPlaylists[m.playlistListIndex]
+					m.confirmDeletePlaylist = true
 					return m, nil
 				}
 			}
@@ -504,6 +531,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusMessage = fmt.Sprintf("Error: %v", msg.err)
 		return m, ClearStatusAfter(5*time.Second)
 
+	case playlistDeletedMsg:
+		m.statusMessage = fmt.Sprintf("Deleted playlist %q", msg.playlistName)
+		m.isLoadingPlaylists = true
+		m.playlistListIndex = 0
+		return m, tea.Batch(m.loadPlaylistsCmd(), ClearStatusAfter(4*time.Second))
+
+	case playlistDeleteError:
+		m.statusMessage = fmt.Sprintf("Error deleting playlist: %v", msg.err)
+		return m, ClearStatusAfter(5*time.Second)
+
 	case ClearStatusMsg:
 		m.statusMessage = ""
 		return m, nil
@@ -747,3 +784,16 @@ func (m *Model) AddTrackToPlaylistCmd(playlistID, playlistName string, track mod
 type playlistAddError struct{ err error }
 type playlistCreatedAndAddedMsg struct{ playlistName, trackTitle string }
 type playlistAddedMsg struct{ playlistName, trackTitle string }
+
+func (m *Model) DeletePlaylistCmd(playlistID, playlistName string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.catalog.DeletePlaylist(playlistID)
+		if err != nil {
+			return playlistDeleteError{err: err}
+		}
+		return playlistDeletedMsg{playlistName: playlistName}
+	}
+}
+
+type playlistDeleteError struct{ err error }
+type playlistDeletedMsg struct{ playlistName string }

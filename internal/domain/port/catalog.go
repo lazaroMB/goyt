@@ -9,4 +9,5 @@ type MusicCatalogPort interface {
 	GetPlaylistTracks(playlistID string) ([]model.Track, error)
 	CreatePlaylist(name string, description string) (string, error)
 	AddTrackToPlaylist(playlistID string, videoID string) error
+	DeletePlaylist(playlistID string) error
 }

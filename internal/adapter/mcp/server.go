@@ -171,6 +171,16 @@ func (s *Server) Start() error {
 	)
 	mcpServer.AddTool(addTrackToPlaylistTool, s.handleAddTrackToPlaylist)
 
+	// 10. Delete Playlist Tool
+	deletePlaylistTool := mcp.NewTool("delete_playlist",
+		mcp.WithDescription("Delete an existing playlist from the library by its ID."),
+		mcp.WithString("playlist_id",
+			mcp.Required(),
+			mcp.Description("The ID of the playlist to delete (e.g. PL... or VL...)"),
+		),
+	)
+	mcpServer.AddTool(deletePlaylistTool, s.handleDeletePlaylist)
+
 	// Create and start the Streamable HTTP server
 	httpServer := server.NewStreamableHTTPServer(mcpServer,
 		server.WithEndpointPath("/sse"),
@@ -437,4 +447,21 @@ func (s *Server) handleAddTrackToPlaylist(ctx context.Context, request mcp.CallT
 	}
 
 	return mcp.NewToolResultText(fmt.Sprintf("Successfully added track (ID: %s) to playlist (ID: %s).", videoID, playlistID)), nil
+}
+
+func (s *Server) handleDeletePlaylist(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	playlistID, err := request.RequireString("playlist_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	err = s.catalog.DeletePlaylist(playlistID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to delete playlist: %v", err)), nil
+	}
+
+	// Request TUI to reload playlists cache
+	s.program.Send(tui.MCPRefreshPlaylistsMsg{})
+
+	return mcp.NewToolResultText(fmt.Sprintf("Successfully deleted playlist (ID: %s).", playlistID)), nil
 }

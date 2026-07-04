@@ -571,3 +571,12 @@ func (c *Client) AddTrackToPlaylist(playlistID, videoID string) error {
 	_, err := c.it.Call("BROWSE/EDIT_PLAYLIST", nil, body)
 	return err
 }
+
+// DeletePlaylist deletes a playlist by its ID on YouTube Music.
+func (c *Client) DeletePlaylist(playlistID string) error {
+	body := map[string]interface{}{
+		"playlistId": playlistID,
+	}
+	_, err := c.it.Call("PLAYLIST/DELETE", nil, body)
+	return err
+}

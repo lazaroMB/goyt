@@ -91,3 +91,7 @@ func (a *YtMusicCatalogAdapter) CreatePlaylist(name string, description string) 
 func (a *YtMusicCatalogAdapter) AddTrackToPlaylist(playlistID string, videoID string) error {
 	return a.client.AddTrackToPlaylist(playlistID, videoID)
 }
+
+func (a *YtMusicCatalogAdapter) DeletePlaylist(playlistID string) error {
+	return a.client.DeletePlaylist(playlistID)
+}

@@ -125,6 +125,10 @@ type Model struct {
 	creatingPlaylist    bool
 	playlistInput       textinput.Model
 
+	// Playlist Delete State
+	confirmDeletePlaylist bool
+	playlistToDelete      model.Playlist
+
 	// Player State (synced from mpv)
 	isPlaying     bool
 	duration      float64

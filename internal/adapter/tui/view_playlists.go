@@ -23,6 +23,15 @@ func (m *Model) renderPlaylists() string {
 		return sb.String()
 	}
 
+	if m.confirmDeletePlaylist {
+		sb.WriteString("  Your Playlists:\n\n")
+		sb.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("#FF0000")).Bold(true).Render(
+			fmt.Sprintf("  ⚠️  Are you sure you want to delete playlist %q?", m.playlistToDelete.Title),
+		) + "\n\n")
+		sb.WriteString("  [ Press 'y' to Confirm | Press 'n' or Esc to Cancel ]\n")
+		return sb.String()
+	}
+
 	mainHeight := m.height - 11
 
 	if !m.inPlaylistDetail {

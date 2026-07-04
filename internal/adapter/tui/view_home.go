@@ -14,6 +14,7 @@ func (m *Model) renderHome() string {
 	sb.WriteString("  - Space     : Toggle Play / Pause\n")
 	sb.WriteString("  - a         : Add highlighted item to Play Queue\n")
 	sb.WriteString("  - m / M     : Add highlighted track to a Playlist\n")
+	sb.WriteString("  - d / D     : Delete highlighted playlist (in Playlists view)\n")
 	sb.WriteString("  - n / p     : Skip to Next / Previous track\n")
 	sb.WriteString("  - [ / ]     : Decrease / Increase volume\n")
 	sb.WriteString("  - Left/Right: Seek 10s backward / forward\n")
