@@ -13,7 +13,7 @@ func (m *Model) View() string {
 	// Layout elements
 	sidebarWidth := 20
 	mainWidth := m.width - sidebarWidth - 4 // border padding
-	mainHeight := m.height - 10            // minus header and footer player
+	mainHeight := m.height - 11            // minus header (1) and footer player (10)
 
 	// Define styles
 	mainStyle := lipgloss.NewStyle().
