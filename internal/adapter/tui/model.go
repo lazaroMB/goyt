@@ -28,6 +28,54 @@ func ClearStatusAfter(d time.Duration) tea.Cmd {
 	})
 }
 
+// MCPSearchMsg updates the search view with results retrieved via MCP
+type MCPSearchMsg struct {
+	Query        string
+	Tracks       []model.Track
+	Continuation string
+}
+
+// MCPShowPlaylistsMsg switches the view to list all playlists
+type MCPShowPlaylistsMsg struct {
+	Playlists []model.Playlist
+}
+
+// MCPShowPlaylistDetailMsg switches the view to details of a specific playlist
+type MCPShowPlaylistDetailMsg struct {
+	PlaylistName string
+	Tracks       []model.Track
+}
+
+// MCPEnqueueTrackMsg adds a track to the queue
+type MCPEnqueueTrackMsg struct {
+	Track model.Track
+}
+
+// MCPEnqueuePlaylistMsg adds all tracks of a playlist to the queue
+type MCPEnqueuePlaylistMsg struct {
+	PlaylistName string
+	Tracks       []model.Track
+}
+
+// MCPPlayPauseMsg requests to update play/pause state
+type MCPPlayPauseMsg struct {
+	Action string // "play", "pause", "toggle"
+}
+
+// PlaybackInfo holds current player status
+type PlaybackInfo struct {
+	CurrentTrack model.Track
+	IsPlaying    bool
+	Duration     float64
+	TimePos      float64
+	Volume       int
+}
+
+// MCPGetPlaybackInfoMsg requests status from the TUI
+type MCPGetPlaybackInfoMsg struct {
+	ResponseChan chan PlaybackInfo
+}
+
 type Model struct {
 	theme      model.Theme
 	catalog    port.MusicCatalogPort

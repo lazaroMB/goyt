@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha1"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"goyt/internal/adapter/catalog/ytmusic"
 	configJson "goyt/internal/adapter/config/json"
+	"goyt/internal/adapter/mcp"
 	"goyt/internal/adapter/player/mpv"
 	"goyt/internal/adapter/tui"
 	"goyt/internal/domain/model"
@@ -79,6 +81,13 @@ func getSAPISIDHash(sapisid string, origin string) string {
 }
 
 func main() {
+	// Configure logging to a file to prevent stdout/stderr corruption of the TUI
+	logFile, err := os.OpenFile("goyt.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err == nil {
+		log.SetOutput(logFile)
+		defer logFile.Close()
+	}
+
 	// 0. Load Configuration
 	configAdapter, err := configJson.NewJsonConfigAdapter()
 	if err != nil {
@@ -129,6 +138,14 @@ func main() {
 	// 5. Initialize Bubble Tea UI
 	modelTui := tui.NewModel(client, p, q, theme)
 	program := tea.NewProgram(modelTui, tea.WithAltScreen())
+
+	// Start MCP SSE Server in background (port 8080)
+	mcpServer := mcp.NewServer(client, program, 8080)
+	go func() {
+		if err := mcpServer.Start(); err != nil {
+			log.Printf("MCP Server error: %v", err)
+		}
+	}()
 
 	if _, err := program.Run(); err != nil {
 		fmt.Printf("Error running TUI: %v\n", err)

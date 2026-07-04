@@ -293,6 +293,95 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+	case MCPSearchMsg:
+		m.activeView = ViewSearch
+		m.focusSide = false
+		m.searchInput.SetValue(msg.Query)
+		m.searchInput.Blur()
+		m.searchResults = msg.Tracks
+		m.searchContinuation = msg.Continuation
+		m.searchListIndex = 0
+		m.searchError = nil
+		m.isSearching = false
+		m.statusMessage = fmt.Sprintf("Search updated via MCP: %q", msg.Query)
+		return m, ClearStatusAfter(3*time.Second)
+
+	case MCPShowPlaylistsMsg:
+		m.activeView = ViewPlaylists
+		m.focusSide = false
+		m.libraryPlaylists = msg.Playlists
+		m.playlistListIndex = 0
+		m.inPlaylistDetail = false
+		m.statusMessage = "Playlists loaded via MCP"
+		return m, ClearStatusAfter(3*time.Second)
+
+	case MCPShowPlaylistDetailMsg:
+		m.activeView = ViewPlaylists
+		m.focusSide = false
+		m.selectedPlaylistName = msg.PlaylistName
+		m.selectedPlaylistTracks = msg.Tracks
+		m.playlistTrackIndex = 0
+		m.inPlaylistDetail = true
+		m.statusMessage = fmt.Sprintf("Opened playlist details via MCP: %q", msg.PlaylistName)
+		return m, ClearStatusAfter(3*time.Second)
+
+	case MCPEnqueueTrackMsg:
+		m.queue.Add(msg.Track)
+		m.activeView = ViewQueue
+		m.statusMessage = fmt.Sprintf("Added to queue via MCP: %s - %s", msg.Track.Artist, msg.Track.Title)
+		var playCmd tea.Cmd
+		if !m.trackLoaded {
+			m.currentTrack = msg.Track
+			m.trackLoaded = true
+			m.isLoading = true
+			playCmd = m.PlayTrackCmd(msg.Track)
+		}
+		return m, tea.Batch(playCmd, ClearStatusAfter(3*time.Second))
+
+	case MCPEnqueuePlaylistMsg:
+		if len(msg.Tracks) > 0 {
+			m.queue.Add(msg.Tracks...)
+			m.activeView = ViewQueue
+			m.statusMessage = fmt.Sprintf("Added %d tracks from %q to queue via MCP", len(msg.Tracks), msg.PlaylistName)
+			var playCmd tea.Cmd
+			if !m.trackLoaded {
+				firstTrack := msg.Tracks[0]
+				m.queue.SetIndex(len(m.queue.List()) - len(msg.Tracks))
+				m.currentTrack = firstTrack
+				m.trackLoaded = true
+				m.isLoading = true
+				playCmd = m.PlayTrackCmd(firstTrack)
+			}
+			return m, tea.Batch(playCmd, ClearStatusAfter(3*time.Second))
+		}
+		m.statusMessage = fmt.Sprintf("Playlist %q has no tracks", msg.PlaylistName)
+		return m, ClearStatusAfter(3*time.Second)
+
+	case MCPPlayPauseMsg:
+		var targetPause bool
+		switch msg.Action {
+		case "play":
+			targetPause = false
+		case "pause":
+			targetPause = true
+		default: // toggle
+			targetPause = m.isPlaying
+		}
+		_ = m.player.SetPause(targetPause)
+		m.isPlaying = !targetPause
+		m.statusMessage = fmt.Sprintf("Playback updated via MCP: %s", msg.Action)
+		return m, ClearStatusAfter(3*time.Second)
+
+	case MCPGetPlaybackInfoMsg:
+		msg.ResponseChan <- PlaybackInfo{
+			CurrentTrack: m.currentTrack,
+			IsPlaying:    m.isPlaying,
+			Duration:     m.duration,
+			TimePos:      m.timePos,
+			Volume:       m.volume,
+		}
+		return m, nil
+
 	case ClearStatusMsg:
 		m.statusMessage = ""
 		return m, nil
