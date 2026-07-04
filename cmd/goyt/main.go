@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"flag"
 
 	"goyt/internal/adapter/catalog/ytmusic"
 	configJson "goyt/internal/adapter/config/json"
@@ -19,6 +20,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 
 type authenticatedRoundTripper struct {
 	cookie string
@@ -82,6 +90,18 @@ func getSAPISIDHash(sapisid string, origin string) string {
 }
 
 func main() {
+	// Define version flags
+	versionFlag := flag.Bool("v", false, "print version information")
+	flag.BoolVar(versionFlag, "version", false, "print version information")
+	flag.Parse()
+
+	if *versionFlag {
+		fmt.Printf("GoYT Version: %s\n", version)
+		fmt.Printf("Git Commit:   %s\n", commit)
+		fmt.Printf("Build Date:   %s\n", date)
+		os.Exit(0)
+	}
+
 	// Configure logging to a file to prevent stdout/stderr corruption of the TUI
 	logFile, err := os.OpenFile("goyt.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err == nil {
