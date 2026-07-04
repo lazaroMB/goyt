@@ -573,9 +573,12 @@ func (c *Client) AddTrackToPlaylist(playlistID, videoID string) error {
 }
 
 // DeletePlaylist deletes a playlist by its ID on YouTube Music.
+// Library browseIds use a "VL" prefix (e.g. "VLPL...") but the
+// playlist/delete endpoint expects the raw ID (e.g. "PL...").
 func (c *Client) DeletePlaylist(playlistID string) error {
+	id := strings.TrimPrefix(playlistID, "VL")
 	body := map[string]interface{}{
-		"playlistId": playlistID,
+		"playlistId": id,
 	}
 	_, err := c.it.Call("PLAYLIST/DELETE", nil, body)
 	return err
