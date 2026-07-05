@@ -27,19 +27,19 @@ func (m *Model) renderFooter(width int) string {
 		statusIcon = "▶"
 	}
 
-	info := fmt.Sprintf(" %s  %s - %s", statusIcon, trackArtist, trackTitle)
+	info := fmt.Sprintf("%s  %s - %s", statusIcon, trackArtist, trackTitle)
 	if m.isLoading {
-		info = fmt.Sprintf(" %s  Loading: %s - %s...", statusIcon, trackArtist, trackTitle)
+		info = fmt.Sprintf("%s  Loading: %s - %s...", statusIcon, trackArtist, trackTitle)
 	}
 	sb.WriteString(info + "\n")
 
 	// Waveform Progress Bar (Lines 2-6) or Simple Progress Bar
-	barWidth := width - 2
+	barWidth := width - 5
 	var progress string
 	showVisualizer := m.height >= 18
 
 	if m.isLoading {
-		msg := " Resolving stream & buffering... "
+		msg := "Resolving stream & buffering..."
 		pad := barWidth - len(msg)
 		var line string
 		if pad > 0 {
@@ -177,13 +177,13 @@ func (m *Model) renderFooter(width int) string {
 	// Time Pos & Volume Row (Line 7)
 	currTimeStr := formatTime(m.timePos)
 	totalTimeStr := formatTime(m.duration)
-	timeInfo := fmt.Sprintf(" %s / %s", currTimeStr, totalTimeStr)
+	timeInfo := fmt.Sprintf("%s / %s", currTimeStr, totalTimeStr)
 	if m.isLoading {
-		timeInfo = " --:-- / --:--"
+		timeInfo = "--:-- / --:--"
 	}
-	vol := fmt.Sprintf("Vol: %d%% ", m.volume)
+	vol := fmt.Sprintf("Vol: %d%%", m.volume)
 
-	padSize := width - len(timeInfo) - len(vol)
+	padSize := barWidth - len(timeInfo) - len(vol)
 	if padSize > 0 {
 		sb.WriteString(timeInfo + strings.Repeat(" ", padSize) + vol)
 	} else {
@@ -192,6 +192,7 @@ func (m *Model) renderFooter(width int) string {
 
 	footerStyle := lipgloss.NewStyle().
 		Width(width).
+		Padding(0, 2, 0, 3).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(m.theme.InactiveBorder)).
 		Background(lipgloss.Color(m.theme.Surface)).

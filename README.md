@@ -106,6 +106,11 @@ By default, GoYT can search and stream public tracks without logging in. However
 | `[` | Decrease volume (by 5%) |
 | `]` | Increase volume (by 5%) |
 | `Left` / `Right` | Seek backward / forward 10 seconds |
+| `t` | Cycle color themes (iOS, Amber, Catppuccin, Nord, Dracula) |
+| `v` | Cycle visualizer modes (Wave, Block Bars, Minimal Sparkline) |
+| `r` | Retry fetching lyrics (in Lyrics view) |
+| `c` | Copy Now Playing share card to clipboard |
+| `?` | Toggle Keyboard Controls help screen overlay |
 | `q` or `Ctrl+C` | Quit player |
 
 ---
