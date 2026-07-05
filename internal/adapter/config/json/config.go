@@ -12,9 +12,10 @@ import (
 
 // ConfigJSON matches the format of config.json
 type ConfigJSON struct {
-	Cookie    string `json:"cookie"`
-	ThemeName string `json:"theme_name,omitempty"`
-	Theme     *struct {
+	Cookie              string `json:"cookie"`
+	ThemeName           string `json:"theme_name,omitempty"`
+	EnableNotifications *bool  `json:"enable_notifications,omitempty"`
+	Theme               *struct {
 		PrimaryHighlight   string   `json:"primary_highlight"`
 		SecondaryHighlight string   `json:"secondary_highlight"`
 		InactiveBorder     string   `json:"inactive_border"`
@@ -209,4 +210,15 @@ func (a *JsonConfigAdapter) readConfig() (*ConfigJSON, error) {
 	}
 
 	return &cfg, nil
+}
+
+func (a *JsonConfigAdapter) LoadNotificationsEnabled() (bool, error) {
+	cfg, err := a.readConfig()
+	if err != nil {
+		return true, nil // default to true on error
+	}
+	if cfg.EnableNotifications != nil {
+		return *cfg.EnableNotifications, nil
+	}
+	return true, nil // default to true if unspecified
 }

@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"strings"
 	"time"
 
 	"goyt/internal/domain/model"
 	"goyt/internal/domain/port"
+	"goyt/pkg/notification"
 
+	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -19,6 +22,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.showHelpOverlay {
+			m.showHelpOverlay = false
+			return m, nil
+		}
 		if m.confirmDeletePlaylist {
 			switch msg.String() {
 			case "y", "Y":
@@ -42,6 +49,31 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.player.Stop()
 			return m, tea.Quit
 
+		case "?":
+			if m.activeView != ViewSearch || !m.searchInput.Focused() {
+				m.showHelpOverlay = true
+				return m, nil
+			}
+
+		case "c":
+			if m.activeView != ViewSearch || !m.searchInput.Focused() {
+				card := m.generateShareCard()
+				if err := clipboard.WriteAll(card); err == nil {
+					m.statusMessage = "Copied 'Now Playing' card to clipboard!"
+				} else {
+					m.statusMessage = "Failed to copy card to clipboard."
+				}
+				return m, ClearStatusAfter(3*time.Second)
+			}
+
+		case "v":
+			if m.activeView != ViewSearch || !m.searchInput.Focused() {
+				m.visualizerMode = (m.visualizerMode + 1) % 3
+				modes := []string{"Wave", "Block Bars", "Minimal Sparkline"}
+				m.statusMessage = fmt.Sprintf("Visualizer Mode: %s", modes[m.visualizerMode])
+				return m, ClearStatusAfter(2*time.Second)
+			}
+
 		case "t":
 			if m.activeView != ViewSearch || !m.searchInput.Focused() {
 				m.themeIndex = (m.themeIndex + 1) % len(model.PresetNames)
@@ -49,6 +81,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.theme = model.PresetThemes[nextName]
 				m.statusMessage = fmt.Sprintf("Theme: %s", m.theme.Name)
 				return m, ClearStatusAfter(2 * time.Second)
+			}
+
+		case "r":
+			if (m.activeView != ViewSearch || !m.searchInput.Focused()) && m.trackLoaded {
+				m.lyricsLoading = true
+				m.lyricsError = nil
+				m.plainLyrics = ""
+				m.syncedLyrics = nil
+				m.statusMessage = "Retrying lyrics fetch..."
+				return m, tea.Batch(
+					m.fetchLyricsCmd(m.currentTrack.Artist, m.currentTrack.Title, m.currentTrack.VideoID),
+					ClearStatusAfter(2*time.Second),
+				)
 			}
 
 		// Global playback shortcuts (when not typing in search box)
@@ -242,6 +287,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				case ViewQueue:
 					m.queueListIndex = max(0, m.queueListIndex-1)
+				case ViewLyrics:
+					m.lyricsScrollOffset = max(0, m.lyricsScrollOffset-1)
 				case ViewPlaylistSelect:
 					if !m.creatingPlaylist {
 						m.playlistSelectIndex = max(0, m.playlistSelectIndex-1)
@@ -252,7 +299,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "down", "j":
 			if m.focusSide {
-				m.sidebarIndex = min(4, m.sidebarIndex+1)
+				m.sidebarIndex = min(5, m.sidebarIndex+1)
 				m.activeView = ActiveView(m.sidebarIndex)
 				if m.activeView == ViewPlaylists && len(m.libraryPlaylists) == 0 {
 					m.isLoadingPlaylists = true
@@ -277,6 +324,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				case ViewQueue:
 					m.queueListIndex = min(len(m.queue.List())-1, m.queueListIndex+1)
+				case ViewLyrics:
+					m.lyricsScrollOffset++
 				case ViewPlaylistSelect:
 					if !m.creatingPlaylist {
 						totalOptions := len(m.libraryPlaylists) + 1
@@ -674,11 +723,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case model.Track:
 		m.currentTrack = msg
 		m.isPlaying = true
+		return m, m.triggerTrackChange(msg)
+
+	case lyricsLoadedMsg:
+		if msg.trackID == m.lyricsTrackID {
+			m.lyricsLoading = false
+			m.plainLyrics = msg.plainLyrics
+			m.syncedLyrics = msg.syncedLyrics
+			m.lyricsError = msg.err
+		}
 		return m, nil
 
 	case MpvEventMsg:
-		m.handleMpvEvent(port.PlayerEvent(msg))
-		return m, m.waitForMpvEvents()
+		cmd := m.handleMpvEvent(port.PlayerEvent(msg))
+		return m, tea.Batch(cmd, m.waitForMpvEvents())
 	}
 
 	if m.activeView == ViewSearch && m.searchInput.Focused() {
@@ -694,7 +752,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m *Model) handleMpvEvent(ev port.PlayerEvent) {
+func (m *Model) handleMpvEvent(ev port.PlayerEvent) tea.Cmd {
+	var cmd tea.Cmd
 	switch ev.Type {
 	case "start-file":
 		m.isLoading = true
@@ -742,6 +801,7 @@ func (m *Model) handleMpvEvent(ev port.PlayerEvent) {
 				m.isLoading = true
 				url := fmt.Sprintf("ytdl://%s", nextTrack.VideoID)
 				_ = m.player.LoadFile(url)
+				cmd = m.triggerTrackChange(nextTrack)
 			} else {
 				m.isPlaying = false
 				m.trackLoaded = false
@@ -750,6 +810,7 @@ func (m *Model) handleMpvEvent(ev port.PlayerEvent) {
 			}
 		}
 	}
+	return cmd
 }
 
 func max(a, b int) int {
@@ -806,3 +867,73 @@ func (m *Model) DeletePlaylistCmd(playlistID, playlistName string) tea.Cmd {
 
 type playlistDeleteError struct{ err error }
 type playlistDeletedMsg struct{ playlistName string }
+
+func (m *Model) triggerTrackChange(track model.Track) tea.Cmd {
+	if m.lyricsTrackID == track.VideoID {
+		return nil
+	}
+	m.lyricsTrackID = track.VideoID
+	m.plainLyrics = ""
+	m.syncedLyrics = nil
+	m.lyricsLoading = true
+	m.lyricsError = nil
+	m.lyricsScrollOffset = 0
+
+	if m.notificationsEnabled {
+		notification.Send("Now Playing", fmt.Sprintf("%s - %s", track.Artist, track.Title))
+	}
+
+	return m.fetchLyricsCmd(track.Artist, track.Title, track.VideoID)
+}
+
+func (m *Model) generateShareCard() string {
+	if !m.trackLoaded {
+		return "No track loaded."
+	}
+	var sb strings.Builder
+	sb.WriteString("┌────────────────────────────────────────┐\n")
+	sb.WriteString("│          🎵 NOW PLAYING ON GoYT 🎵     │\n")
+	sb.WriteString("├────────────────────────────────────────┤\n")
+	
+	title := m.currentTrack.Title
+	artist := m.currentTrack.Artist
+	
+	titleLine := fmt.Sprintf("│ Title:  %-30s │\n", truncateStr(title, 30))
+	artistLine := fmt.Sprintf("│ Artist: %-30s │\n", truncateStr(artist, 30))
+	sb.WriteString(titleLine)
+	sb.WriteString(artistLine)
+
+	pct := 0.0
+	if m.duration > 0 {
+		pct = m.timePos / m.duration
+	}
+	barWidth := 20
+	filled := int(pct * float64(barWidth))
+	if filled > barWidth {
+		filled = barWidth
+	}
+	if filled < 0 {
+		filled = 0
+	}
+	unfilled := barWidth - filled
+	barStr := strings.Repeat("█", filled) + strings.Repeat("░", unfilled)
+	timeStr := fmt.Sprintf("%s/%s", formatTime(m.timePos), formatTime(m.duration))
+	progressLine := fmt.Sprintf("│ [%s] %-13s │\n", barStr, timeStr)
+	sb.WriteString(progressLine)
+
+	sb.WriteString("├────────────────────────────────────────┤\n")
+	linkStr := fmt.Sprintf("https://music.youtube.com/watch?v=%s", m.currentTrack.VideoID)
+	linkLine := fmt.Sprintf("│ Link: %-32s │\n", linkStr)
+	sb.WriteString(linkLine)
+	sb.WriteString("└────────────────────────────────────────┘\n")
+	return sb.String()
+}
+
+func truncateStr(s string, maxLen int) string {
+	runes := []rune(s)
+	if len(runes) > maxLen {
+		return string(runes[:maxLen-3]) + "..."
+	}
+	return s
+}
+

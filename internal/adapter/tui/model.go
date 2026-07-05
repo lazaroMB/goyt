@@ -19,6 +19,7 @@ const (
 	ViewSearch
 	ViewPlaylists
 	ViewQueue
+	ViewLyrics
 	ViewMCP
 	ViewPlaylistSelect
 )
@@ -87,6 +88,11 @@ type MCPConnectionsMsg struct {
 // MCPRefreshPlaylistsMsg requests the TUI to reload playlists
 type MCPRefreshPlaylistsMsg struct{}
 
+type SyncedLine struct {
+	Time float64
+	Text string
+}
+
 type Model struct {
 	theme      model.Theme
 	catalog    port.MusicCatalogPort
@@ -153,9 +159,22 @@ type Model struct {
 	// Window Dimensions
 	width  int
 	height int
+
+	// Usability & Virality Features
+	notificationsEnabled bool
+	showHelpOverlay      bool
+	visualizerMode       int // 0: Wave, 1: Block Bars, 2: Minimal Sparkline
+
+	// Lyrics State
+	lyricsTrackID      string
+	plainLyrics        string
+	syncedLyrics       []SyncedLine
+	lyricsLoading      bool
+	lyricsError        error
+	lyricsScrollOffset int
 }
 
-func NewModel(catalog port.MusicCatalogPort, player port.AudioPlayerPort, q *model.Queue, theme *model.Theme, mcpEnabled *atomic.Bool) *Model {
+func NewModel(catalog port.MusicCatalogPort, player port.AudioPlayerPort, q *model.Queue, theme *model.Theme, mcpEnabled *atomic.Bool, notificationsEnabled bool) *Model {
 	ti := textinput.New()
 	ti.Placeholder = "Search songs, artists..."
 	ti.Focus()
@@ -183,20 +202,21 @@ func NewModel(catalog port.MusicCatalogPort, player port.AudioPlayerPort, q *mod
 	}
 
 	return &Model{
-		theme:          t,
-		catalog:        catalog,
-		player:         player,
-		queue:          q,
-		activeView:     ViewHome,
-		focusSide:      true,
-		sidebarIndex:   0,
-		searchInput:    ti,
-		playlistInput:  pi,
-		volume:         70,
-		equalizerBars:  make([]int, 80), // default to 80 columns like we updated earlier
-		mcpEnabled:     mcpEnabled,
-		mcpConnections: 0,
-		themeIndex:     themeIdx,
+		theme:                t,
+		catalog:              catalog,
+		player:               player,
+		queue:                q,
+		activeView:           ViewHome,
+		focusSide:            true,
+		sidebarIndex:         0,
+		searchInput:          ti,
+		playlistInput:        pi,
+		volume:               70,
+		equalizerBars:        make([]int, 80), // default to 80 columns like we updated earlier
+		mcpEnabled:           mcpEnabled,
+		mcpConnections:       0,
+		themeIndex:           themeIdx,
+		notificationsEnabled: notificationsEnabled,
 	}
 }
 

@@ -10,6 +10,10 @@ func (m *Model) View() string {
 		return "Initializing GoYT..."
 	}
 
+	if m.showHelpOverlay {
+		return m.renderHelpOverlay(m.width, m.height)
+	}
+
 	// Layout elements
 	sidebarWidth := 20
 	mainWidth := m.width - sidebarWidth - 4 // border padding
@@ -45,6 +49,8 @@ func (m *Model) View() string {
 		mainView = m.renderPlaylists()
 	case ViewQueue:
 		mainView = m.renderQueue()
+	case ViewLyrics:
+		mainView = m.renderLyrics()
 	case ViewMCP:
 		mainView = m.renderMCP()
 	case ViewPlaylistSelect:
@@ -59,4 +65,40 @@ func (m *Model) View() string {
 	footer := m.renderFooter(m.width - 2)
 
 	return lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
+}
+
+func (m *Model) renderHelpOverlay(viewWidth, viewHeight int) string {
+	helpText := `      GoYT Keyboard Controls
+  ─────────────────────────────────────
+  Tab           Toggle Sidebar / Pane
+  Up/Down (j/k) Navigate lists/tabs
+  Enter         Select / Play track
+  /             Focus search bar
+  a             Add track to queue
+  m             Add track to playlist
+  d             Delete playlist (confirm)
+  Space         Play / Pause
+  n             Next track
+  p             Previous track
+  [ / ]         Volume down / up
+  Left/Right    Seek backward/forward
+  t             Cycle color themes
+  v             Cycle visualizers
+  r             Retry fetching lyrics
+  c             Copy Now Playing card
+  ?             Toggle help screen
+  q / Ctrl+C    Quit player
+  ─────────────────────────────────────
+  Press any key to close this menu.`
+
+	helpStyle := lipgloss.NewStyle().
+		Border(lipgloss.DoubleBorder()).
+		BorderForeground(lipgloss.Color(m.theme.PrimaryHighlight)).
+		Background(lipgloss.Color(m.theme.Surface)).
+		Foreground(lipgloss.Color(m.theme.TextPrimary)).
+		Padding(1, 3).
+		Width(40)
+
+	renderedHelp := helpStyle.Render(helpText)
+	return lipgloss.Place(viewWidth, viewHeight, lipgloss.Center, lipgloss.Center, renderedHelp)
 }

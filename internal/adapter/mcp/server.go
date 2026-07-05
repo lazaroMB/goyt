@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -42,6 +43,21 @@ type trackingHandler struct {
 }
 
 func (h *trackingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/now-playing" {
+		ch := make(chan tui.PlaybackInfo, 1)
+		h.program.Send(tui.MCPGetPlaybackInfoMsg{ResponseChan: ch})
+
+		select {
+		case info := <-ch:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(info)
+			return
+		case <-time.After(1 * time.Second):
+			http.Error(w, "Timed out getting playback info", http.StatusRequestTimeout)
+			return
+		}
+	}
+
 	if r.URL.Path == "/sse" {
 		if r.Method == http.MethodGet {
 			if !h.enabled.Load() {

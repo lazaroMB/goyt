@@ -24,7 +24,7 @@ func (m *Model) renderSidebar(sidebarWidth, mainHeight int) string {
 	if m.mcpEnabled != nil && !m.mcpEnabled.Load() {
 		mcpText = "  MCP [OFF]  "
 	}
-	views := []string{"  Home  ", "  Search  ", "  Playlists  ", "  Queue  ", mcpText}
+	views := []string{"  Home  ", "  Search  ", "  Playlists  ", "  Queue  ", "  Lyrics  ", mcpText}
 	for i, v := range views {
 		if i == m.sidebarIndex {
 			selectedStyle := lipgloss.NewStyle().

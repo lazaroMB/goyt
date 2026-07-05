@@ -74,42 +74,81 @@ func (m *Model) renderFooter(width int) string {
 		}
 		highlightedCount := int(pct * float64(barWidth))
 
-		// Render 5 rows of text from top y = 4 to bottom y = 0
-		var rows [5]strings.Builder
-		for y := 4; y >= 0; y-- {
+		if m.visualizerMode == 2 {
+			var row strings.Builder
+			sparklines := []rune{' ', '▂', '▃', '▅', '█'}
 			for x := 0; x < barWidth; x++ {
 				h := m.equalizerBars[x]
-
-				char := ' '
-				isFilled := y < h
-				if isFilled {
-					char = m.theme.EqualizerChar
+				idx := h - 1
+				if idx < 0 {
+					idx = 0
 				}
+				if idx > 4 {
+					idx = 4
+				}
+				char := sparklines[idx]
 
-				// Styling
 				var style lipgloss.Style
-				if isFilled && x < highlightedCount {
-					factor := float64(x)/float64(barWidth-1)*0.6 + float64(y)/4.0*0.4
+				if x < highlightedCount {
+					factor := float64(x) / float64(barWidth-1)
 					colorHex := m.interpolateColor(factor)
 					style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
-				} else if isFilled {
-					factor := float64(x)/float64(barWidth-1)*0.6 + float64(y)/4.0*0.4
+				} else {
+					factor := float64(x) / float64(barWidth-1)
 					colorHex := m.interpolateColorDim(factor)
 					style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
-				} else {
-					style = lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.EqualizerBg))
 				}
-				rows[y].WriteString(style.Render(string(char)))
+				row.WriteString(style.Render(string(char)))
 			}
-		}
+			progress = strings.Join([]string{
+				"",
+				"",
+				row.String(),
+				"",
+				"",
+			}, "\n")
+		} else {
+			// Render 5 rows of text from top y = 4 to bottom y = 0
+			var rows [5]strings.Builder
+			for y := 4; y >= 0; y-- {
+				for x := 0; x < barWidth; x++ {
+					h := m.equalizerBars[x]
 
-		progress = strings.Join([]string{
-			rows[4].String(),
-			rows[3].String(),
-			rows[2].String(),
-			rows[1].String(),
-			rows[0].String(),
-		}, "\n")
+					char := ' '
+					isFilled := y < h
+					if isFilled {
+						if m.visualizerMode == 1 {
+							char = '█'
+						} else {
+							char = m.theme.EqualizerChar
+						}
+					}
+
+					// Styling
+					var style lipgloss.Style
+					if isFilled && x < highlightedCount {
+						factor := float64(x)/float64(barWidth-1)*0.6 + float64(y)/4.0*0.4
+						colorHex := m.interpolateColor(factor)
+						style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
+					} else if isFilled {
+						factor := float64(x)/float64(barWidth-1)*0.6 + float64(y)/4.0*0.4
+						colorHex := m.interpolateColorDim(factor)
+						style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
+					} else {
+						style = lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.EqualizerBg))
+					}
+					rows[y].WriteString(style.Render(string(char)))
+				}
+			}
+
+			progress = strings.Join([]string{
+				rows[4].String(),
+				rows[3].String(),
+				rows[2].String(),
+				rows[1].String(),
+				rows[0].String(),
+			}, "\n")
+		}
 	} else {
 		progress = ""
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/sha1"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -102,6 +103,85 @@ func main() {
 		os.Exit(0)
 	}
 
+	if len(os.Args) > 1 && os.Args[1] == "now" {
+		client := &http.Client{Timeout: time.Second}
+		resp, err := client.Get("http://localhost:8080/now-playing")
+		if err != nil {
+			fmt.Println("GoYT player is not currently running.")
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			fmt.Println("GoYT player returned error status.")
+			os.Exit(1)
+		}
+
+		type PlaybackInfo struct {
+			CurrentTrack struct {
+				Title   string `json:"title"`
+				Artist  string `json:"artist"`
+				VideoID string `json:"video_id"`
+			} `json:"CurrentTrack"`
+			IsPlaying bool    `json:"IsPlaying"`
+			Duration  float64 `json:"Duration"`
+			TimePos   float64 `json:"TimePos"`
+			Volume    int     `json:"Volume"`
+		}
+
+		var info PlaybackInfo
+		if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+			fmt.Printf("Error reading player response: %v\n", err)
+			os.Exit(1)
+		}
+
+		if info.CurrentTrack.VideoID == "" {
+			fmt.Println("No track loaded.")
+			os.Exit(0)
+		}
+
+		pct := 0.0
+		if info.Duration > 0 {
+			pct = info.TimePos / info.Duration
+		}
+		barWidth := 20
+		filled := int(pct * float64(barWidth))
+		if filled > barWidth {
+			filled = barWidth
+		}
+		if filled < 0 {
+			filled = 0
+		}
+		unfilled := barWidth - filled
+		barStr := strings.Repeat("█", filled) + strings.Repeat("░", unfilled)
+
+		formatTime := func(seconds float64) string {
+			s := int(seconds)
+			min := s / 60
+			sec := s % 60
+			return fmt.Sprintf("%d:%02d", min, sec)
+		}
+
+		truncateStr := func(s string, maxLen int) string {
+			runes := []rune(s)
+			if len(runes) > maxLen {
+				return string(runes[:maxLen-3]) + "..."
+			}
+			return s
+		}
+
+		fmt.Println("┌────────────────────────────────────────┐")
+		fmt.Println("│          🎵 NOW PLAYING ON GoYT 🎵     │")
+		fmt.Println("├────────────────────────────────────────┤")
+		fmt.Printf("│ Title:  %-30s │\n", truncateStr(info.CurrentTrack.Title, 30))
+		fmt.Printf("│ Artist: %-30s │\n", truncateStr(info.CurrentTrack.Artist, 30))
+		fmt.Printf("│ [%s] %-13s │\n", barStr, fmt.Sprintf("%s/%s", formatTime(info.TimePos), formatTime(info.Duration)))
+		fmt.Println("├────────────────────────────────────────┤")
+		fmt.Printf("│ Link: %-32s │\n", fmt.Sprintf("https://music.youtube.com/watch?v=%s", info.CurrentTrack.VideoID))
+		fmt.Println("└────────────────────────────────────────┘")
+		os.Exit(0)
+	}
+
 	// Configure logging to a file to prevent stdout/stderr corruption of the TUI
 	logFile, err := os.OpenFile("goyt.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err == nil {
@@ -160,7 +240,12 @@ func main() {
 	mcpEnabled := &atomic.Bool{}
 	mcpEnabled.Store(true) // default value is on
 
-	modelTui := tui.NewModel(client, p, q, theme, mcpEnabled)
+	notificationsEnabled, err := configAdapter.LoadNotificationsEnabled()
+	if err != nil {
+		notificationsEnabled = true
+	}
+
+	modelTui := tui.NewModel(client, p, q, theme, mcpEnabled, notificationsEnabled)
 	program := tea.NewProgram(modelTui, tea.WithAltScreen())
 
 	// Start MCP SSE Server in background (port 8080)
