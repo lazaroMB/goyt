@@ -24,14 +24,16 @@ type Server struct {
 	port       int
 	enabled    *atomic.Bool
 	activeConn int32
+	version    string
 }
 
-func NewServer(catalog port.MusicCatalogPort, program *tea.Program, portNum int, enabled *atomic.Bool) *Server {
+func NewServer(catalog port.MusicCatalogPort, program *tea.Program, portNum int, enabled *atomic.Bool, version string) *Server {
 	return &Server{
 		catalog: catalog,
 		program: program,
 		port:    portNum,
 		enabled: enabled,
+		version: version,
 	}
 }
 
@@ -82,7 +84,7 @@ func (h *trackingHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) Start() error {
-	mcpServer := server.NewMCPServer("goyt-mcp", "1.0.0")
+	mcpServer := server.NewMCPServer("goyt-mcp", s.version)
 
 	// 1. Search Music Tool
 	searchTool := mcp.NewTool("search_music",

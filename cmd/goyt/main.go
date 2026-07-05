@@ -249,7 +249,7 @@ func main() {
 	program := tea.NewProgram(modelTui, tea.WithAltScreen())
 
 	// Start MCP SSE Server in background (port 8080)
-	mcpServer := mcp.NewServer(client, program, 8080, mcpEnabled)
+	mcpServer := mcp.NewServer(client, program, 8080, mcpEnabled, version)
 	go func() {
 		if err := mcpServer.Start(); err != nil {
 			log.Printf("MCP Server error: %v", err)
