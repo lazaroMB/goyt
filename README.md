@@ -61,6 +61,27 @@ go build -o goyt ./cmd/goyt/...
 
 ---
 
+## Authentication (Optional)
+
+By default, GoYT can search and stream public tracks without logging in. However, to access your private library, view/manage your playlists, or like songs, you must authenticate by providing a YouTube Music cookie.
+
+### How to Get Your Cookie
+1. Open a web browser and go to [YouTube Music](https://music.youtube.com). Make sure you are logged in.
+2. Open the developer tools (press `F12` or `Ctrl+Shift+I` / `Cmd+Opt+I`) and go to the **Network** tab.
+3. Refresh the page or click on a tab (e.g. "Library") to trigger a request.
+4. Filter by `youtubei` or look for a network request to `/youtubei/v1/...` (e.g. `browse` or `search`).
+5. Select the request, go to the **Headers** tab, and find the **Request Headers** section.
+6. Copy the entire value of the `Cookie` header (a long string starting with `__Secure-...` or similar).
+7. Paste this cookie string into the configuration file at `~/.config/goyt/config.json`:
+   ```json
+   {
+     "cookie": "PASTE_YOUR_COOKIE_STRING_HERE"
+   }
+   ```
+   *(Note: The configuration file is automatically created in `~/.config/goyt/config.json` after running the app for the first time, or you can create it manually.)*
+
+---
+
 ## Keyboard Controls
 
 | Key | Action |
