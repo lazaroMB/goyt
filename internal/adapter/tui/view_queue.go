@@ -17,10 +17,9 @@ func (m *Model) renderQueue() string {
 		return sb.String()
 	}
 
-	mainHeight := m.height - 11
-	maxVisible := mainHeight - 2 - 3
-	if maxVisible < 5 {
-		maxVisible = 5
+	maxVisible := m.mainHeight - 2 - 2
+	if maxVisible < 1 {
+		maxVisible = 1
 	}
 
 	currIdx := m.queue.CurrentIndex()

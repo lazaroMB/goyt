@@ -32,14 +32,13 @@ func (m *Model) renderSearch() string {
 	}
 
 	// Calculate maximum visible rows based on panel height and overhead
-	overhead := 5
+	overhead := 3
 	if m.statusMessage != "" {
-		overhead = 7
+		overhead = 5
 	}
-	mainHeight := m.height - 11
-	maxVisible := mainHeight - 2 - overhead
-	if maxVisible < 5 {
-		maxVisible = 5
+	maxVisible := m.mainHeight - 2 - overhead
+	if maxVisible < 1 {
+		maxVisible = 1
 	}
 
 	start, end := getVisibleRange(len(m.searchResults), maxVisible, m.searchListIndex)

@@ -33,9 +33,11 @@ func (m *Model) renderFooter(width int) string {
 	}
 	sb.WriteString(info + "\n")
 
-	// Waveform Progress Bar (Lines 2-6)
+	// Waveform Progress Bar (Lines 2-6) or Simple Progress Bar
 	barWidth := width - 2
 	var progress string
+	showVisualizer := m.height >= 18
+
 	if m.isLoading {
 		msg := " Resolving stream & buffering... "
 		pad := barWidth - len(msg)
@@ -49,13 +51,17 @@ func (m *Model) renderFooter(width int) string {
 		} else {
 			line = msg
 		}
-		progress = strings.Join([]string{
-			"",
-			"",
-			line,
-			"",
-			"",
-		}, "\n")
+		if showVisualizer {
+			progress = strings.Join([]string{
+				"",
+				"",
+				line,
+				"",
+				"",
+			}, "\n")
+		} else {
+			progress = line
+		}
 	} else if barWidth > 0 {
 		// Ensure equalizerBars size matches barWidth exactly
 		if len(m.equalizerBars) != barWidth {
@@ -74,80 +80,94 @@ func (m *Model) renderFooter(width int) string {
 		}
 		highlightedCount := int(pct * float64(barWidth))
 
-		if m.visualizerMode == 2 {
-			var row strings.Builder
-			sparklines := []rune{' ', '▂', '▃', '▅', '█'}
-			for x := 0; x < barWidth; x++ {
-				h := m.equalizerBars[x]
-				idx := h - 1
-				if idx < 0 {
-					idx = 0
-				}
-				if idx > 4 {
-					idx = 4
-				}
-				char := sparklines[idx]
-
-				var style lipgloss.Style
-				if x < highlightedCount {
-					factor := float64(x) / float64(barWidth-1)
-					colorHex := m.interpolateColor(factor)
-					style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
-				} else {
-					factor := float64(x) / float64(barWidth-1)
-					colorHex := m.interpolateColorDim(factor)
-					style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
-				}
-				row.WriteString(style.Render(string(char)))
+		if !showVisualizer {
+			filled := highlightedCount
+			if filled > barWidth {
+				filled = barWidth
 			}
-			progress = strings.Join([]string{
-				"",
-				"",
-				row.String(),
-				"",
-				"",
-			}, "\n")
+			if filled < 0 {
+				filled = 0
+			}
+			unfilled := barWidth - filled
+			barStr := strings.Repeat("▰", filled) + strings.Repeat("▱", unfilled)
+			style := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.PrimaryHighlight))
+			progress = style.Render(barStr)
 		} else {
-			// Render 5 rows of text from top y = 4 to bottom y = 0
-			var rows [5]strings.Builder
-			for y := 4; y >= 0; y-- {
+			if m.visualizerMode == 2 {
+				var row strings.Builder
+				sparklines := []rune{' ', '▂', '▃', '▅', '█'}
 				for x := 0; x < barWidth; x++ {
 					h := m.equalizerBars[x]
-
-					char := ' '
-					isFilled := y < h
-					if isFilled {
-						if m.visualizerMode == 1 {
-							char = '█'
-						} else {
-							char = m.theme.EqualizerChar
-						}
+					idx := h - 1
+					if idx < 0 {
+						idx = 0
 					}
+					if idx > 4 {
+						idx = 4
+					}
+					char := sparklines[idx]
 
-					// Styling
 					var style lipgloss.Style
-					if isFilled && x < highlightedCount {
-						factor := float64(x)/float64(barWidth-1)*0.6 + float64(y)/4.0*0.4
+					if x < highlightedCount {
+						factor := float64(x) / float64(barWidth-1)
 						colorHex := m.interpolateColor(factor)
 						style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
-					} else if isFilled {
-						factor := float64(x)/float64(barWidth-1)*0.6 + float64(y)/4.0*0.4
+					} else {
+						factor := float64(x) / float64(barWidth-1)
 						colorHex := m.interpolateColorDim(factor)
 						style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
-					} else {
-						style = lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.EqualizerBg))
 					}
-					rows[y].WriteString(style.Render(string(char)))
+					row.WriteString(style.Render(string(char)))
 				}
-			}
+				progress = strings.Join([]string{
+					"",
+					"",
+					row.String(),
+					"",
+					"",
+				}, "\n")
+			} else {
+				// Render 5 rows of text from top y = 4 to bottom y = 0
+				var rows [5]strings.Builder
+				for y := 4; y >= 0; y-- {
+					for x := 0; x < barWidth; x++ {
+						h := m.equalizerBars[x]
 
-			progress = strings.Join([]string{
-				rows[4].String(),
-				rows[3].String(),
-				rows[2].String(),
-				rows[1].String(),
-				rows[0].String(),
-			}, "\n")
+						char := ' '
+						isFilled := y < h
+						if isFilled {
+							if m.visualizerMode == 1 {
+								char = '█'
+							} else {
+								char = m.theme.EqualizerChar
+							}
+						}
+
+						// Styling
+						var style lipgloss.Style
+						if isFilled && x < highlightedCount {
+							factor := float64(x)/float64(barWidth-1)*0.6 + float64(y)/4.0*0.4
+							colorHex := m.interpolateColor(factor)
+							style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
+						} else if isFilled {
+							factor := float64(x)/float64(barWidth-1)*0.6 + float64(y)/4.0*0.4
+							colorHex := m.interpolateColorDim(factor)
+							style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorHex))
+						} else {
+							style = lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.EqualizerBg))
+						}
+						rows[y].WriteString(style.Render(string(char)))
+					}
+				}
+
+				progress = strings.Join([]string{
+					rows[4].String(),
+					rows[3].String(),
+					rows[2].String(),
+					rows[1].String(),
+					rows[0].String(),
+				}, "\n")
+			}
 		}
 	} else {
 		progress = ""

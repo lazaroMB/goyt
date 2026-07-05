@@ -32,16 +32,14 @@ func (m *Model) renderPlaylists() string {
 		return sb.String()
 	}
 
-	mainHeight := m.height - 11
-
 	if !m.inPlaylistDetail {
-		overhead := 4
+		overhead := 3
 		if m.statusMessage != "" {
-			overhead = 6
+			overhead = 5
 		}
-		maxVisible := mainHeight - 2 - overhead
-		if maxVisible < 5 {
-			maxVisible = 5
+		maxVisible := m.mainHeight - 2 - overhead
+		if maxVisible < 1 {
+			maxVisible = 1
 		}
 
 		if len(m.libraryPlaylists) == 0 {
@@ -85,13 +83,13 @@ func (m *Model) renderPlaylists() string {
 		}
 		sb.WriteString("\n  [ Press Enter to open | Press 'a' to add all songs to queue ]\n")
 	} else {
-		overhead := 4
+		overhead := 3
 		if m.statusMessage != "" {
-			overhead = 6
+			overhead = 5
 		}
-		maxVisible := mainHeight - 2 - overhead
-		if maxVisible < 5 {
-			maxVisible = 5
+		maxVisible := m.mainHeight - 2 - overhead
+		if maxVisible < 1 {
+			maxVisible = 1
 		}
 
 		if len(m.selectedPlaylistTracks) == 0 {

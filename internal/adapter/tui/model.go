@@ -157,8 +157,10 @@ type Model struct {
 	themeIndex int
 
 	// Window Dimensions
-	width  int
-	height int
+	width      int
+	height     int
+	mainWidth  int
+	mainHeight int
 
 	// Usability & Virality Features
 	notificationsEnabled bool
@@ -340,4 +342,46 @@ func (m *Model) PlayNextCmd() tea.Cmd {
 		}
 		return nil
 	}
+}
+
+func (m *Model) recalculateSizes(w, h int) {
+	m.width = w
+	m.height = h
+
+	// 1. Footer Height: if height is small, hide visualizer to reclaim 4 lines
+	footerHeight := 9
+	if h < 18 {
+		footerHeight = 5
+	}
+
+	// 2. Sidebar Width: responsive
+	sidebarWidth := 20
+	if w < 50 {
+		sidebarWidth = 0
+	} else if w < 80 {
+		sidebarWidth = 14
+	}
+
+	// 3. Body Dimensions
+	m.mainHeight = h - footerHeight - 2 // header (1) + borders/spacing
+	if m.mainHeight < 3 {
+		m.mainHeight = 3
+	}
+
+	if sidebarWidth > 0 {
+		m.mainWidth = w - sidebarWidth - 4
+	} else {
+		m.mainWidth = w - 2
+	}
+	if m.mainWidth < 5 {
+		m.mainWidth = 5
+	}
+
+	// 4. Update child component widths
+	inputWidth := m.mainWidth - 6
+	if inputWidth < 10 {
+		inputWidth = 10
+	}
+	m.searchInput.Width = inputWidth
+	m.playlistInput.Width = inputWidth
 }

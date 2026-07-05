@@ -689,8 +689,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.tickEqualizer()
 
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
+		m.recalculateSizes(msg.Width, msg.Height)
 		return m, nil
 
 	case searchResultsMsg:

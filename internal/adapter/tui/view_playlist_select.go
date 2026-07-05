@@ -24,11 +24,10 @@ func (m *Model) renderPlaylistSelect() string {
 	}
 
 	// Playlist list
-	mainHeight := m.height - 11
-	overhead := 6
-	maxVisible := mainHeight - 2 - overhead
-	if maxVisible < 5 {
-		maxVisible = 5
+	overhead := 5
+	maxVisible := m.mainHeight - 2 - overhead
+	if maxVisible < 1 {
+		maxVisible = 1
 	}
 
 	totalOptions := len(m.libraryPlaylists) + 1 // +1 for "Create New Playlist"
