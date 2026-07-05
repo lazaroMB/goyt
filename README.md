@@ -48,13 +48,19 @@ brew install mpv yt-dlp
 
 ## Installation & Running
 
-### 1. Build from Source
+### Arch Linux (AUR)
+If you are on Arch Linux, you can install the precompiled binary package from the [AUR](https://aur.archlinux.org/packages/goyt-bin):
+```bash
+yay -S goyt-bin
+```
+
+### Build from Source
 From the project workspace root, build the executable:
 ```bash
 go build -o goyt ./cmd/goyt/...
 ```
 
-### 2. Run the App
+### Run the App
 ```bash
 ./goyt
 ```
