@@ -5,10 +5,10 @@ GoYT is a fast, keyboard-driven Terminal User Interface (TUI) music player for Y
 ## Screenshots
 
 ### Search View
-![Search view — browsing AC/DC results with the retro amber terminal theme](assets/search_view.png)
+![Search view — browsing Benny Moré results](assets/search_view.png)
 
-### Playback with Equalizer
-![Playback view — streaming AC/DC with the real-time audio-reactive equalizer](assets/playback_view.png)
+### Lyrics View
+![Lyrics view — displaying synced lyrics for Disturbed - The Sound of Silence with the audio-reactive visualizer](assets/lyrics.png)
 
 ---
 
