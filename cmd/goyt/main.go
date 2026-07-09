@@ -17,6 +17,7 @@ import (
 	"goyt/internal/adapter/mcp"
 	"goyt/internal/adapter/player/mpv"
 	"goyt/internal/adapter/tui"
+	"goyt/internal/adapter/cache"
 	"goyt/internal/domain/model"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -245,8 +246,18 @@ func main() {
 		notificationsEnabled = true
 	}
 
-	modelTui := tui.NewModel(client, p, q, theme, mcpEnabled, notificationsEnabled)
+	// 5. Initialize Caching
+	cacheMgr := cache.NewLocalCacheManager(nil)
+	if err := cacheMgr.Start(); err != nil {
+		log.Printf("Warning: failed to start cache manager: %v", err)
+	}
+
+	modelTui := tui.NewModel(client, p, q, theme, mcpEnabled, notificationsEnabled, cacheMgr)
 	program := tea.NewProgram(modelTui, tea.WithAltScreen())
+
+	cacheMgr.SetOnComplete(func(videoID string) {
+		program.Send(tui.CacheSuccessMsg{VideoID: videoID})
+	})
 
 	// Start MCP SSE Server in background (port 8080)
 	mcpServer := mcp.NewServer(client, program, 8080, mcpEnabled, version)

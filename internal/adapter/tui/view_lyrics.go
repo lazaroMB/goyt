@@ -23,6 +23,13 @@ type lyricsLoadedMsg struct {
 	trackID      string
 }
 
+type lyricsPreloadedMsg struct {
+	plainLyrics  string
+	syncedLyrics []SyncedLine
+	err          error
+	trackID      string
+}
+
 func stripAccents(s string) string {
 	r := strings.NewReplacer(
 		"à", "a", "á", "a", "â", "a", "ã", "a", "ä", "a", "å", "a", "æ", "ae",
@@ -405,3 +412,19 @@ func (m *Model) renderLyrics() string {
 	sb.WriteString("  No lyrics available for this track.\n")
 	return sb.String()
 }
+
+func (m *Model) preloadLyricsCmd(artist, title, trackID string) tea.Cmd {
+	return func() tea.Msg {
+		msg := m.fetchLyricsCmd(artist, title, trackID)()
+		if lMsg, ok := msg.(lyricsLoadedMsg); ok {
+			return lyricsPreloadedMsg{
+				plainLyrics:  lMsg.plainLyrics,
+				syncedLyrics: lMsg.syncedLyrics,
+				err:          lMsg.err,
+				trackID:      lMsg.trackID,
+			}
+		}
+		return nil
+	}
+}
+

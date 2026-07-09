@@ -818,6 +818,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case lyricsPreloadedMsg:
+		m.preloadedLyrics[msg.trackID] = lyricsLoadedMsg{
+			plainLyrics:  msg.plainLyrics,
+			syncedLyrics: msg.syncedLyrics,
+			err:          msg.err,
+			trackID:      msg.trackID,
+		}
+		return m, nil
+
+	case CacheSuccessMsg:
+		return m, nil
+
 	case MpvEventMsg:
 		cmd := m.handleMpvEvent(port.PlayerEvent(msg))
 		return m, tea.Batch(cmd, m.waitForMpvEvents())
@@ -883,7 +895,12 @@ func (m *Model) handleMpvEvent(ev port.PlayerEvent) tea.Cmd {
 				m.currentTrack = nextTrack
 				m.trackLoaded = true
 				m.isLoading = true
-				url := fmt.Sprintf("ytdl://%s", nextTrack.VideoID)
+				var url string
+				if cached, path := m.cacheMgr.IsCached(nextTrack.VideoID); cached {
+					url = path
+				} else {
+					url = fmt.Sprintf("ytdl://%s", nextTrack.VideoID)
+				}
 				_ = m.player.LoadFile(url)
 				cmd = m.triggerTrackChange(nextTrack)
 			} else {
@@ -957,17 +974,54 @@ func (m *Model) triggerTrackChange(track model.Track) tea.Cmd {
 		return nil
 	}
 	m.lyricsTrackID = track.VideoID
-	m.plainLyrics = ""
-	m.syncedLyrics = nil
-	m.lyricsLoading = true
-	m.lyricsError = nil
 	m.lyricsScrollOffset = 0
 
 	if m.notificationsEnabled {
 		notification.Send("Now Playing", fmt.Sprintf("%s - %s", track.Artist, track.Title))
 	}
 
-	return m.fetchLyricsCmd(track.Artist, track.Title, track.VideoID)
+	// Start pre-buffering next track
+	preloadCmd := m.preBufferNextTrack()
+
+	// Check if lyrics are already preloaded in memory
+	if preloaded, ok := m.preloadedLyrics[track.VideoID]; ok {
+		m.plainLyrics = preloaded.plainLyrics
+		m.syncedLyrics = preloaded.syncedLyrics
+		m.lyricsError = preloaded.err
+		m.lyricsLoading = false
+		delete(m.preloadedLyrics, track.VideoID)
+		return preloadCmd
+	}
+
+	m.plainLyrics = ""
+	m.syncedLyrics = nil
+	m.lyricsLoading = true
+	m.lyricsError = nil
+
+	fetchCmd := m.fetchLyricsCmd(track.Artist, track.Title, track.VideoID)
+	return tea.Batch(fetchCmd, preloadCmd)
+}
+
+func (m *Model) getNextTrack() (model.Track, bool) {
+	tracks := m.queue.List()
+	nextIdx := m.queue.CurrentIndex() + 1
+	if nextIdx >= 0 && nextIdx < len(tracks) {
+		return tracks[nextIdx], true
+	}
+	return model.Track{}, false
+}
+
+func (m *Model) preBufferNextTrack() tea.Cmd {
+	nextTrack, ok := m.getNextTrack()
+	if !ok {
+		return nil
+	}
+
+	// Trigger audio download
+	m.cacheMgr.PreBuffer(nextTrack)
+
+	// Trigger lyrics prefetch
+	return m.preloadLyricsCmd(nextTrack.Artist, nextTrack.Title, nextTrack.VideoID)
 }
 
 func (m *Model) generateShareCard() string {

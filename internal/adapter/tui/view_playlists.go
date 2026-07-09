@@ -129,7 +129,11 @@ func (m *Model) renderPlaylists() string {
 			if i == m.playlistTrackIndex && !m.focusSide {
 				itemStyle = itemStyle.Foreground(lipgloss.Color(m.theme.PrimaryHighlight)).Bold(true)
 			}
-			line := fmt.Sprintf("%s%s - %s (%s)", prefix, track.Artist, track.Title, track.Duration)
+			cachedIndicator := ""
+			if cached, _ := m.cacheMgr.IsCached(track.VideoID); cached {
+				cachedIndicator = " ↓"
+			}
+			line := fmt.Sprintf("%s%s - %s (%s)%s", prefix, track.Artist, track.Title, track.Duration, cachedIndicator)
 			sb.WriteString(itemStyle.Render(line) + "\n")
 		}
 		sb.WriteString("\n  [ Press Enter to play track | Press 'a' to add to queue | Press 'r' to reload | Press Esc to go back ]\n")

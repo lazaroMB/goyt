@@ -52,7 +52,11 @@ func (m *Model) renderQueue() string {
 			itemStyle = itemStyle.Foreground(lipgloss.Color(m.theme.PrimaryHighlight)).Bold(true)
 		}
 
-		line := fmt.Sprintf("%s%s - %s (%s)", prefix, track.Artist, track.Title, track.Duration)
+		cachedIndicator := ""
+		if cached, _ := m.cacheMgr.IsCached(track.VideoID); cached {
+			cachedIndicator = " ↓"
+		}
+		line := fmt.Sprintf("%s%s - %s (%s)%s", prefix, track.Artist, track.Title, track.Duration, cachedIndicator)
 		sb.WriteString(itemStyle.Render(line) + "\n")
 	}
 

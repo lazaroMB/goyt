@@ -88,6 +88,10 @@ type MCPConnectionsMsg struct {
 // MCPRefreshPlaylistsMsg requests the TUI to reload playlists
 type MCPRefreshPlaylistsMsg struct{}
 
+type CacheSuccessMsg struct {
+	VideoID string
+}
+
 type SyncedLine struct {
 	Time float64
 	Text string
@@ -174,9 +178,13 @@ type Model struct {
 	lyricsLoading      bool
 	lyricsError        error
 	lyricsScrollOffset int
+
+	// Caching & Preloading
+	cacheMgr        port.CacheManager
+	preloadedLyrics map[string]lyricsLoadedMsg
 }
 
-func NewModel(catalog port.MusicCatalogPort, player port.AudioPlayerPort, q *model.Queue, theme *model.Theme, mcpEnabled *atomic.Bool, notificationsEnabled bool) *Model {
+func NewModel(catalog port.MusicCatalogPort, player port.AudioPlayerPort, q *model.Queue, theme *model.Theme, mcpEnabled *atomic.Bool, notificationsEnabled bool, cacheMgr port.CacheManager) *Model {
 	ti := textinput.New()
 	ti.Placeholder = "Search songs, artists..."
 	ti.Focus()
@@ -219,6 +227,8 @@ func NewModel(catalog port.MusicCatalogPort, player port.AudioPlayerPort, q *mod
 		mcpConnections:       0,
 		themeIndex:           themeIdx,
 		notificationsEnabled: notificationsEnabled,
+		cacheMgr:             cacheMgr,
+		preloadedLyrics:      make(map[string]lyricsLoadedMsg),
 	}
 }
 
@@ -325,8 +335,13 @@ func (m *Model) SearchNextPageCmd(token string) tea.Cmd {
 // PlayTrackCmd loads a track into the player.
 func (m *Model) PlayTrackCmd(track model.Track) tea.Cmd {
 	return func() tea.Msg {
-		// Use ytdl:// prefix to let mpv's internal yt-dlp hook resolve the stream URL
-		url := fmt.Sprintf("ytdl://%s", track.VideoID)
+		var url string
+		if cached, path := m.cacheMgr.IsCached(track.VideoID); cached {
+			url = path
+		} else {
+			// Use ytdl:// prefix to let mpv's internal yt-dlp hook resolve the stream URL
+			url = fmt.Sprintf("ytdl://%s", track.VideoID)
+		}
 		err := m.player.LoadFile(url)
 		if err != nil {
 			return err
