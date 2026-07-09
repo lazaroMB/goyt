@@ -81,7 +81,7 @@ func (m *Model) renderPlaylists() string {
 			line := fmt.Sprintf("%s%s (%s)", prefix, pl.Title, pl.Count)
 			sb.WriteString(itemStyle.Render(line) + "\n")
 		}
-		sb.WriteString("\n  [ Press Enter to open | Press 'a' to add all songs to queue ]\n")
+		sb.WriteString("\n  [ Press Enter to open | Press 'a' to add all songs to queue | Press 'r' to reload ]\n")
 	} else {
 		overhead := 3
 		if m.statusMessage != "" {
@@ -132,7 +132,7 @@ func (m *Model) renderPlaylists() string {
 			line := fmt.Sprintf("%s%s - %s (%s)", prefix, track.Artist, track.Title, track.Duration)
 			sb.WriteString(itemStyle.Render(line) + "\n")
 		}
-		sb.WriteString("\n  [ Press Enter to play track | Press 'a' to add to queue | Press Esc to go back ]\n")
+		sb.WriteString("\n  [ Press Enter to play track | Press 'a' to add to queue | Press 'r' to reload | Press Esc to go back ]\n")
 	}
 
 	return sb.String()

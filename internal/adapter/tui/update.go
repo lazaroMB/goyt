@@ -44,6 +44,67 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		if m.isAnyInputFocused() {
+			switch msg.String() {
+			case "ctrl+c":
+				m.player.Stop()
+				return m, tea.Quit
+			case "enter":
+				if m.activeView == ViewSearch && m.searchInput.Focused() {
+					query := m.searchInput.Value()
+					if query != "" {
+						m.isSearching = true
+						m.searchError = nil
+						m.searchResults = nil
+						m.searchInput.Blur()
+						return m, m.SearchCmd(query)
+					}
+				} else if m.activeView == ViewPlaylistSelect && m.playlistInput.Focused() {
+					name := m.playlistInput.Value()
+					var createCmd tea.Cmd
+					if name != "" {
+						m.statusMessage = fmt.Sprintf("Creating playlist %q and adding track...", name)
+						createCmd = m.CreatePlaylistAndAddTrackCmd(name, "", m.trackToManage)
+					}
+					m.playlistInput.Reset()
+					m.playlistInput.Blur()
+					m.creatingPlaylist = false
+					m.activeView = m.previousView
+					return m, createCmd
+				}
+				return m, nil
+			case "esc":
+				if m.activeView == ViewSearch && m.searchInput.Focused() {
+					m.searchInput.Blur()
+				} else if m.activeView == ViewPlaylistSelect && m.playlistInput.Focused() {
+					m.creatingPlaylist = false
+					m.playlistInput.Reset()
+					m.playlistInput.Blur()
+				}
+				return m, nil
+			case "tab":
+				if m.activeView == ViewSearch {
+					m.focusSide = !m.focusSide
+					if !m.focusSide {
+						m.searchInput.Focus()
+					} else {
+						m.searchInput.Blur()
+					}
+				}
+				return m, nil
+			default:
+				if m.activeView == ViewSearch && m.searchInput.Focused() {
+					m.searchInput, cmd = m.searchInput.Update(msg)
+					return m, cmd
+				}
+				if m.activeView == ViewPlaylistSelect && m.playlistInput.Focused() {
+					m.playlistInput, cmd = m.playlistInput.Update(msg)
+					return m, cmd
+				}
+				return m, nil
+			}
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "q":
 			m.player.Stop()
@@ -84,7 +145,31 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "r":
-			if (m.activeView != ViewSearch || !m.searchInput.Focused()) && m.trackLoaded {
+			if m.activeView == ViewPlaylists {
+				if m.inPlaylistDetail {
+					if len(m.libraryPlaylists) > 0 && m.playlistListIndex >= 0 && m.playlistListIndex < len(m.libraryPlaylists) {
+						pl := m.libraryPlaylists[m.playlistListIndex]
+						m.isLoadingPlaylists = true
+						m.playlistsError = nil
+						m.statusMessage = fmt.Sprintf("Reloading playlist %q...", pl.Title)
+						return m, tea.Batch(
+							m.loadPlaylistTracksCmd(pl.ID, pl.Title),
+							ClearStatusAfter(3*time.Second),
+						)
+					}
+				} else {
+					m.isLoadingPlaylists = true
+					m.playlistsError = nil
+					m.statusMessage = "Reloading library playlists..."
+					return m, tea.Batch(
+						m.loadPlaylistsCmd(),
+						ClearStatusAfter(3*time.Second),
+					)
+				}
+				return m, nil
+			}
+
+			if m.trackLoaded {
 				m.lyricsLoading = true
 				m.lyricsError = nil
 				m.plainLyrics = ""
@@ -934,5 +1019,13 @@ func truncateStr(s string, maxLen int) string {
 		return string(runes[:maxLen-3]) + "..."
 	}
 	return s
+}
+
+func (m *Model) isAnyInputFocused() bool {
+	if m.focusSide {
+		return false
+	}
+	return (m.activeView == ViewSearch && m.searchInput.Focused()) ||
+		(m.activeView == ViewPlaylistSelect && m.playlistInput.Focused())
 }
 

@@ -101,7 +101,7 @@ func (m *Model) renderHelpOverlay(viewWidth, viewHeight int) string {
 		{"Left/Right", "Seek backward/forward"},
 		{"t", "Cycle color themes"},
 		{"v", "Cycle visualizers"},
-		{"r", "Retry fetching lyrics"},
+		{"r", "Reload playlists / Retry lyrics"},
 		{"c", "Copy Now Playing card"},
 		{"?", "Toggle help screen"},
 		{"q / Ctrl+C", "Quit player"},
